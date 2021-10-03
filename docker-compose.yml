@@ -1,0 +1,10 @@
+version: '3.4'
+services:
+  bot:
+    build: .
+    image: vaalilakanabot:latest
+    volumes:
+      - ./data:/bot/data:rw
+      - ./logs:/bot/logs:rw
+    env_file:
+      - bot.env
