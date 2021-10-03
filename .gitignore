@@ -5,5 +5,5 @@ logs/*
 !example*
 
 #Exclude all but example data
-#data/*
-#!example*
+data/*
+!example*
