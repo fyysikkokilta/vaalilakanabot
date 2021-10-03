@@ -1,4 +1,9 @@
 *.env
 
-logs/
+# Exclude all but example logs
+logs/*
 !example*
+
+#Exclude all but example data
+#data/*
+#!example*
