@@ -1,5 +1,9 @@
 FROM python:3.9-slim
 
+LABEL version="2021" \
+    description="Vaalilakanabot" \
+    org.opencontainers.image.source="https://github.com/fyysikkokilta/vaalilakanabot"
+
 WORKDIR /bot
 COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
