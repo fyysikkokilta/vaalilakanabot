@@ -8,3 +8,16 @@ services:
       - ./logs:/bot/logs:rw
     env_file:
       - bot.env
+    profiles:
+      - prod
+
+  dev-bot:
+    build: .
+    image: ghcr.io/fyysikkokilta/vaalilakanabot:dev
+    volumes:
+      - ./data:/bot/data:rw
+      - ./logs:/bot/logs:rw
+    env_file:
+      - bot.env
+    profiles:
+      - dev
