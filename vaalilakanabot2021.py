@@ -1,21 +1,22 @@
-import os
-import re
-import time
 import json
-import requests
-import logging
+import os
+import time
 
-from telegram import Update,  InlineKeyboardButton, InlineKeyboardMarkup
+import logging
+import requests
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, MessageHandler, CommandHandler, \
     Filters, ConversationHandler, CallbackContext, CallbackQueryHandler
-from lxml import html, etree
 
 TOKEN = os.environ['VAALILAKANABOT_TOKEN']
 ADMIN_CHAT_ID = os.environ['ADMIN_CHAT_ID']
 
 BASE_URL = 'https://fiirumi.fyysikkokilta.fi'
-TOPIC_LIST_URL = '{}/c/vaalipeli-2021-esittelyt/l/latest.json'.format(BASE_URL) #TODO: update this to correspond current year discussion board
-QUESTION_LIST_URL = '{}/c/vaalipeli-2021-kysymykset/l/latest.json'.format(BASE_URL) #TODO: update this to correspond current year discussion board
+
+# TODO: update these to correspond current year discussion board
+TOPIC_LIST_URL = f'{BASE_URL}/c/vaalipeli-2021-esittelyt/l/latest.json'
+QUESTION_LIST_URL = f'{BASE_URL}/c/vaalipeli-2021-kysymykset/l/latest.json'
 
 BOARD = ['Puheenjohtaja', 'Varapuheenjohtaja', 'Rahastonhoitaja', 'Viestintävastaava',
          'IE', 'Hupimestari', 'Yrityssuhdevastaava', 'Kv-vastaava', 'Opintovastaava',
@@ -47,83 +48,71 @@ with open('data/vaalilakana.json', 'r') as f:
     data = f.read()
     vaalilakana = json.loads(data)
 
-logger.info('Loaded vaalilakana: {}'.format(vaalilakana))
+logger.info('Loaded vaalilakana: %s', vaalilakana)
 
 with open('data/channels.json', 'r') as f:
     data = f.read()
     channels = json.loads(data)
 
-logger.info('Loaded channels: {}'.format(channels))
+logger.info('Loaded channels: %s', channels)
 
 with open('data/fiirumi_posts.json', 'r') as f:
     data = f.read()
     fiirumi_posts = json.loads(data)
 
-logger.info('Loaded fiirumi posts: {}'.format(fiirumi_posts))
+logger.info('Loaded fiirumi posts: %s', fiirumi_posts)
 
 with open('data/question_posts.json', 'r') as f:
     data = f.read()
     question_posts = json.loads(data)
 
-logger.info('Loaded question posts: {}'.format(fiirumi_posts))
+logger.info('Loaded question posts: %s', fiirumi_posts)
 
 updater = Updater(TOKEN, use_context=True)
 
 
-def _save_data(filename, data):
-    with open(filename, 'w') as f:
-        f.write(json.dumps(data))
+def _save_data(filename, content):
+    with open(filename, 'w') as fp:
+        fp.write(json.dumps(content))
 
 
-def _vaalilakana_to_string(vaalilakana):
+def _vaalilakana_to_string(lakana):
     output = ''
     output += '<b>---------------Raati---------------</b>\n'
     # Hardcoded to maintain order instead using dict keys
     for position in BOARD:
-        output += '<b>{position}:</b>\n'.format(position=position)
-        for applicant in vaalilakana[position]:
+        output += f'<b>{position}:</b>\n'
+        for applicant in lakana[position]:
             link = applicant['fiirumi']
             selected = applicant['valittu']
             if selected:
                 if link:
-                    output += '- <a href="{link}">{name}</a> (valittu)\n'.format(
-                        name=applicant['name'],
-                        link=link
-                    )
+                    output += f'- <a href="{link}">{applicant["name"]}</a> (valittu)\n'
                 else:
-                    output += '- {name} (valittu)\n'.format(name=applicant['name'])
+                    output += f'- {applicant["name"]} (valittu)\n'
             else:
                 if link:
-                    output += '- <a href="{link}">{name}</a>\n'.format(
-                        name=applicant['name'],
-                        link=link
-                    )
+                    output += f'- <a href="{link}">{applicant["name"]}</a>\n'
                 else:
-                    output += '- {name}\n'.format(name=applicant['name'])
+                    output += f'- {applicant["name"]}\n'
 
         output += '\n'
     output += '<b>----------Toimihenkilöt----------</b>\n'
     for position in OFFICIALS:
-        output += '<b>{position}:</b>\n'.format(position=position)
-        for applicant in vaalilakana[position]:
+        output += f'<b>{position}:</b>\n'
+        for applicant in lakana[position]:
             link = applicant['fiirumi']
             selected = applicant['valittu']
             if selected:
                 if link:
-                    output += '- <a href="{link}">{name}</a> (valittu)\n'.format(
-                        name=applicant['name'],
-                        link=link
-                    )
+                    output += f'- <a href="{link}">{applicant["name"]}</a> (valittu)\n'
                 else:
-                    output += '- {name} (valittu)\n'.format(name=applicant['name'])
+                    output += f'- {applicant["name"]} (valittu)\n'
             else:
                 if link:
-                    output += '- <a href="{link}">{name}</a>\n'.format(
-                        name=applicant['name'],
-                        link=link
-                    )
+                    output += f'- <a href="{link}">{applicant["name"]}</a>\n'
                 else:
-                    output += '- {name}\n'.format(name=applicant['name'])
+                    output += f'- {applicant["name"]}\n'
 
         output += '\n'
     return output
@@ -148,47 +137,36 @@ def parse_fiirumi_posts(context=updater.bot):
         logger.error(e)
         return
 
-		
     for topic in topic_list:
-        id = topic['id']
+        t_id = topic['id']
         title = topic['title']
         slug = topic['slug']
-        if str(id) not in fiirumi_posts:
+        if str(t_id) not in fiirumi_posts:
             new_post = {
-                'id': id,
+                'id': t_id,
                 'title': title,
                 'slug': slug,
             }
-            fiirumi_posts[str(id)] = new_post
+            fiirumi_posts[str(t_id)] = new_post
             _save_data('data/fiirumi_posts.json', fiirumi_posts)
             _announce_to_channels(
-                '<b>Uusi postaus Vaalipeli-palstalla!</b>\n{title}\n{base}/t/{slug}/{id}'.format(
-                    title=title,
-                    base=BASE_URL,
-                    slug=slug,
-			 	id=id
-                )
+                f'<b>Uusi postaus Vaalipeli-palstalla!</b>\n{title}\n{BASE_URL}/t/{slug}/{t_id}'
             )
-			
+
     for question in question_list:
-        id = question['id']
+        t_id = question['id']
         title = question['title']
         slug = question['slug']
-        if str(id) not in question_posts:
+        if str(t_id) not in question_posts:
             new_question = {
-                'id': id,
+                'id': t_id,
                 'title': title,
                 'slug': slug,
             }
-            question_posts[str(id)] = new_question 
+            question_posts[str(t_id)] = new_question
             _save_data('data/question_posts.json', question_posts)
             _announce_to_channels(
-                '<b>Uusi kysymys Fiirumilla!</b>\n{title}\n{base}/t/{slug}/{id}'.format(
-                    title=title,
-                    base=BASE_URL,
-                    slug=slug,
-			 	id=id
-                )
+                f'<b>Uusi kysymys Fiirumilla!</b>\n{title}\n{BASE_URL}/t/{slug}/{t_id}'
             )
 
 
@@ -205,28 +183,28 @@ def _announce_to_channels(message):
 def remove_applicant(update, context):
     try:
         chat_id = update.message.chat.id
-        if str(chat_id)==str(ADMIN_CHAT_ID):
+        if str(chat_id) == str(ADMIN_CHAT_ID):
             text = update.message.text.replace('/poista', '').strip()
             params = text.split(',')
-            
+
             try:
                 position = params[0].strip()
                 name = params[1].strip()
-            except:
+            except Exception as e:
                 updater.bot.send_message(
                     chat_id,
                     'Virheelliset parametrit - /poista <virka>, <nimi>'
                 )
-                raise Exception('Invalid parameters')
+                raise Exception('Invalid parameters') from e
 
             if position not in vaalilakana:
                 updater.bot.send_message(
                     chat_id,
-                    'Tunnistamaton virka: {}'.format(position),
+                    f'Tunnistamaton virka: {position}',
                     parse_mode='HTML'
                 )
-                raise Exception('Unknown position {}'.format(position))
-            
+                raise Exception(f'Unknown position {position}')
+
             found = None
             for applicant in vaalilakana[position]:
                 if name == applicant['name']:
@@ -236,10 +214,10 @@ def remove_applicant(update, context):
             if not found:
                 updater.bot.send_message(
                     chat_id,
-                    'Hakijaa ei löydy {}'.format(name),
+                    f'Hakijaa ei löydy {name}',
                     parse_mode='HTML'
                 )
-                raise Exception('Applicant not found: {}'.format(name))
+                raise Exception(f'Applicant not found: {name}')
 
             vaalilakana[position].remove(found)
             _save_data('data/vaalilakana.json', vaalilakana)
@@ -260,55 +238,52 @@ def remove_applicant(update, context):
 def add_fiirumi_to_applicant(update, context):
     try:
         chat_id = update.message.chat.id
-        if str(chat_id)==str(ADMIN_CHAT_ID):
+        if str(chat_id) == str(ADMIN_CHAT_ID):
             text = update.message.text.replace('/lisaa_fiirumi', '').strip()
             params = text.split(',')
-            
+
             try:
                 position = params[0].strip()
                 name = params[1].strip()
                 thread_id = params[2].strip()
-            except:
+            except Exception as e:
                 updater.bot.send_message(
                     chat_id,
                     'Virheelliset parametrit - /lisaa_fiirumi <virka>, <nimi>, <thread id>'
                 )
-                raise Exception('Invalid parameters')
+                raise Exception('Invalid parameters') from e
 
             if position not in vaalilakana:
                 updater.bot.send_message(
                     chat_id,
-                    'Tunnistamaton virka: {}'.format(position),
+                    f'Tunnistamaton virka: {position}',
                     parse_mode='HTML'
                 )
-                raise Exception('Unknown position {}'.format(position))
-				
+                raise Exception(f'Unknown position {position}')
+
             if thread_id not in fiirumi_posts:
                 updater.bot.send_message(
                     chat_id,
-                    'Fiirumi-postausta ei löytynyt annetulla id:llä: {}'.format(thread_id),
+                    f'Fiirumi-postausta ei löytynyt annetulla id:llä: {thread_id}',
                     parse_mode='HTML'
                 )
-                raise Exception('Unknown thread {}'.format(thread_id))
-            
+                raise Exception(f'Unknown thread {thread_id}')
+
             found = None
             for applicant in vaalilakana[position]:
                 if name == applicant['name']:
                     found = applicant
-                    fiirumi = '{base}/t/{slug}/{thread_id}'.format(
-                        base = BASE_URL,
-                        slug = fiirumi_posts[thread_id]['slug'],
-                        thread_id = fiirumi_posts[thread_id]['id'])
+                    fiirumi = f'{BASE_URL}/t/{fiirumi_posts[thread_id]["slug"]}/{fiirumi_posts[thread_id]["id"]}'
                     applicant['fiirumi'] = fiirumi
                     break
 
             if not found:
                 updater.bot.send_message(
                     chat_id,
-                    'Hakijaa ei löydy {}'.format(name),
+                    f'Hakijaa ei löydy {name}',
                     parse_mode='HTML'
                 )
-                raise Exception('Apllicant not found: {}'.format(name))
+                raise Exception(f'Applicant not found: {name}')
 
             _save_data('data/vaalilakana.json', vaalilakana)
             global last_applicant
@@ -341,6 +316,8 @@ def add_applicant(update: Update, context: CallbackContext) -> None:
         return SELECTING_POSITION_CLASS
     else:
         update.message.reply_text('Et oo admin :(((')
+        return None
+
 
 def generate_positions(position_class):
     keyboard = []
@@ -405,7 +382,6 @@ def register_position(update: Update, context: CallbackContext) -> int:
 
 def enter_applicant_name(update: Update, context: CallbackContext) -> int:
     """Stores the info about the user and ends the conversation."""
-    user = update.message.from_user
     chat_data = context.chat_data
     logger.debug(chat_data)
     name = update.message.text
@@ -438,28 +414,28 @@ def enter_applicant_name(update: Update, context: CallbackContext) -> int:
 def add_selected_tag(update, context):
     try:
         chat_id = update.message.chat.id
-        if str(chat_id)==str(ADMIN_CHAT_ID):
+        if str(chat_id) == str(ADMIN_CHAT_ID):
             text = update.message.text.replace('/valittu', '').strip()
             params = text.split(',')
-            
+
             try:
                 position = params[0].strip()
                 name = params[1].strip()
-            except:
+            except Exception as e:
                 updater.bot.send_message(
                     chat_id,
                     'Virheelliset parametrit - /valittu <virka>, <nimi>'
                 )
-                raise Exception('Invalid parameters')
+                raise Exception from e
 
             if position not in vaalilakana:
                 updater.bot.send_message(
                     chat_id,
-                    'Tunnistamaton virka: {}'.format(position),
+                    f'Tunnistamaton virka: {position}',
                     parse_mode='HTML'
                 )
-                raise Exception('Unknown position {}'.format(position))
-            
+                raise Exception(f'Unknown position {position}')
+
             found = None
             for applicant in vaalilakana[position]:
                 if name == applicant['name']:
@@ -470,10 +446,10 @@ def add_selected_tag(update, context):
             if not found:
                 updater.bot.send_message(
                     chat_id,
-                    'Hakijaa ei löydy {}'.format(name),
+                    f'Hakijaa ei löydy {name}',
                     parse_mode='HTML'
                 )
-                raise Exception('Apllicant not found: {}'.format(name))
+                raise Exception(f'Applicant not found: {name}')
 
             _save_data('data/vaalilakana.json', vaalilakana)
             global last_applicant
@@ -496,7 +472,7 @@ def show_vaalilakana(update, context):
         updater.bot.send_message(
             chat_id,
             _vaalilakana_to_string(vaalilakana),
-            parse_mode='HTML', disable_web_page_preview = True
+            parse_mode='HTML', disable_web_page_preview=True
         )
     except Exception as e:
         logger.error(e)
@@ -508,7 +484,7 @@ def register_channel(update, context):
         if chat_id not in channels:
             channels.append(chat_id)
             _save_data('data/channels.json', channels)
-            print('New channel added {}'.format(chat_id), update.message)
+            print(f'New channel added {chat_id}', update.message)
             updater.bot.send_message(
                 chat_id,
                 'Rekisteröity Vaalilakanabotin tiedotuskanavaksi!'
@@ -520,7 +496,7 @@ def register_channel(update, context):
 def announce_new_applicant(update, context):
     try:
         chat_id = update.message.chat.id
-        if str(chat_id)==str(ADMIN_CHAT_ID):
+        if str(chat_id) == str(ADMIN_CHAT_ID):
             global last_applicant
             if last_applicant:
                 _announce_to_channels(
@@ -536,19 +512,19 @@ def announce_new_applicant(update, context):
 def jauhis(update, context):
     try:
         chat_id = update.message.chat.id
-        with open('assets/jauhis.png', 'rb') as jauhis:
-            updater.bot.send_sticker(chat_id, jauhis)
+        with open('assets/jauhis.png', 'rb') as photo:
+            updater.bot.send_sticker(chat_id, photo)
     except Exception as e:
-        logger.warning("Error in sending Jauhis", e)
+        logger.warning("Error in sending Jauhis %s", e)
 
 
 def jauh(update, context):
     try:
         chat_id = update.message.chat.id
-        with open('assets/jauh.png', 'rb') as jauh:
-            updater.bot.send_sticker(chat_id, jauh)
+        with open('assets/jauh.png', 'rb') as photo:
+            updater.bot.send_sticker(chat_id, photo)
     except Exception as e:
-        logger.warning("Error in sending Jauh", e)
+        logger.warning("Error in sending Jauh %s", e)
 
 
 def error(update, context):
@@ -577,19 +553,19 @@ def main():
     dp.add_handler(CommandHandler('jauh', jauh))
 
     conv_handler = ConversationHandler(
-            entry_points=[CommandHandler('lisaa', add_applicant)],
-            states={
-                SELECTING_POSITION_CLASS: [
-                    CallbackQueryHandler(select_board_position, pattern='^board$'),
-                    CallbackQueryHandler(select_official_position, pattern='^official$')
-                ],
-                SELECTING_POSITION: [
-                    CallbackQueryHandler(register_position)
-                ],
-                TYPING_NAME: [MessageHandler(Filters.text & (~Filters.command), enter_applicant_name)],
-            },
-            fallbacks=[CommandHandler('cancel', cancel), CommandHandler('lisaa', add_applicant)],
-        )
+        entry_points=[CommandHandler('lisaa', add_applicant)],
+        states={
+            SELECTING_POSITION_CLASS: [
+                CallbackQueryHandler(select_board_position, pattern='^board$'),
+                CallbackQueryHandler(select_official_position, pattern='^official$')
+            ],
+            SELECTING_POSITION: [
+                CallbackQueryHandler(register_position)
+            ],
+            TYPING_NAME: [MessageHandler(Filters.text & (~Filters.command), enter_applicant_name)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel), CommandHandler('lisaa', add_applicant)],
+    )
 
     dp.add_handler(conv_handler)
 
