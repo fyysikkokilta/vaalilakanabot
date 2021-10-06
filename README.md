@@ -15,6 +15,22 @@ Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista 
 - `$ python vaalilakanabot2019.py` 
 - lisää botti relevantteihin keskusteluryhmiin
 
+## Running the bot with Docker
+- create copies of the example_*.json files with such names that the "example_" part is removed.
+- create `bot.env` where `VAALILAKANABOT_TOKEN` and `ADMIN_CHAT_ID` env variables are stored
+- Update TOPIC_LIST_URL ja QUESTION_LIST_URL -variables in the code. See [Discourse documentation](https://docs.discourse.org/#tag/Categories/paths/~1c~1{id}.json/get) for formatting.
+- ```bash
+  # Use this when updating the container to make sure latest code is included
+  docker-compose -f docker-compose.yml up -d --build --force-recreate
+  
+  # Use this to manually build the image
+  docker build -t vaalilakanabot:latest . 
+  
+  # Use this to run the bot without docker-compose
+  docker run --name vaalilakanabot_bot_1 -v ./data:/bot/data:rw -v ./logs:/bot/logs:rw -e bot.env vaalilakanabot:latest
+  # here the naming convention (--name option) matches the automatic docker-compose naming but can be something else.
+    ```
+
 ## Komennot
 Botti tukee seuraavia komentoja:
 - `/start` Rekisteröi ryhmän botin tiedotuskanavaksi ja ryhmää saa botilta ilmoituksia.
