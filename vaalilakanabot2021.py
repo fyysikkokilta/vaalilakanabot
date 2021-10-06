@@ -458,6 +458,15 @@ def jauhis(update, context):
         logger.warning("Error in sending Jauhis", e)
 
 
+def jauh(update, context):
+    try:
+        chat_id = update.message.chat.id
+        with open('assets/jauh.png', 'rb') as jauh:
+            updater.bot.send_sticker(chat_id, jauh)
+    except Exception as e:
+        logger.warning("Error in sending Jauh", e)
+
+
 def error(update, context):
     """Log Errors caused by Updates."""
     logger.warning('Update "%s" caused error "%s"', update, context.error)
@@ -475,6 +484,7 @@ updater.dispatcher.add_handler(CommandHandler('lakana', show_vaalilakana))
 updater.dispatcher.add_handler(CommandHandler('tiedota', announce_new_applicant))
 updater.dispatcher.add_handler(CommandHandler('start', register_channel))
 updater.dispatcher.add_handler(CommandHandler('jauhis', jauhis))
+updater.dispatcher.add_handler(CommandHandler('jauh', jauh))
 
 updater.dispatcher.add_error_handler(error)
 updater.start_polling()
