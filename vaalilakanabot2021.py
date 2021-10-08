@@ -15,6 +15,13 @@ BASE_URL = 'https://fiirumi.fyysikkokilta.fi'
 TOPIC_LIST_URL = '{}/c/hottis-fiilaa/l/latest.json'.format(BASE_URL) #TODO: update this to correspond current year discussion board
 QUESTION_LIST_URL = '{}/c/kokousreferaatit/l/latest.json'.format(BASE_URL) #TODO: update this to correspond current year discussion board
 
+BOARD = ['Puheenjohtaja', 'Varapuheenjohtaja', 'Rahastonhoitaja', 'Viestintävastaava',
+         'IE', 'Hupimestari', 'Yrityssuhdevastaava', 'Kv-vastaava', 'Opintovastaava',
+         'Fuksikapteeni']
+
+OFFICIALS = ['ISOvastaava', 'Jatkuvuustoimikunnan puheenjohtaja', 'Excumestari',
+             'Lukkarimestari', 'Kvantin päätoimittaja']
+
 channels = []
 vaalilakana = {}
 last_applicant = None
@@ -66,14 +73,38 @@ def _save_data(filename, data):
 
 def _vaalilakana_to_string(vaalilakana):
     output = ''
+    output += '<b>---------------Raati---------------</b>\n'
     # Hardcoded to maintain order instead using dict keys
-    for position in ['Puheenjohtaja', 'Varapuheenjohtaja', 'Rahastonhoitaja', 'Viestintävastaava',
-            'IE', 'Hupimestari', 'Yrityssuhdevastaava', 'Kv-vastaava', 'Opintovastaava', 'Fuksikapteeni']:
+    for position in BOARD:
         output += '<b>{position}:</b>\n'.format(position=position)
         for applicant in vaalilakana[position]:
             link = applicant['fiirumi']
             selected = applicant['valittu']
-            if selected == True:
+            if selected:
+                if link:
+                    output += '- <a href="{link}">{name}</a> (valittu)\n'.format(
+                        name=applicant['name'],
+                        link=link
+                    )
+                else:
+                    output += '- {name} (valittu)\n'.format(name=applicant['name'])
+            else:
+                if link:
+                    output += '- <a href="{link}">{name}</a>\n'.format(
+                        name=applicant['name'],
+                        link=link
+                    )
+                else:
+                    output += '- {name}\n'.format(name=applicant['name'])
+
+        output += '\n'
+    output += '<a>----------Toimihenkilöt----------</a>\n'
+    for position in OFFICIALS:
+        output += '<a>{position}:</a>\n'.format(position=position)
+        for applicant in vaalilakana[position]:
+            link = applicant['fiirumi']
+            selected = applicant['valittu']
+            if selected:
                 if link:
                     output += '- <a href="{link}">{name}</a> (valittu)\n'.format(
                         name=applicant['name'],
