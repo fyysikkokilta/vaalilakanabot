@@ -33,11 +33,11 @@ fiirumi_posts = []
 question_posts = []
 
 logger = logging.getLogger('vaalilakanabot')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 log_path = os.path.join('logs', 'vaalilakanabot.log')
 fh = logging.FileHandler(log_path)
-fh.setLevel(logging.DEBUG)
+fh.setLevel(logging.INFO)
 
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 fh.setFormatter(formatter)
@@ -129,9 +129,8 @@ def _vaalilakana_to_string(vaalilakana):
     return output
 
 
-def _parse_fiirumi_posts(context=updater.bot):
+def parse_fiirumi_posts(context=updater.bot):
     try:
-        logger.debug(TOPIC_LIST_URL)
         page_fiirumi = requests.get(TOPIC_LIST_URL)
         logger.debug(page_fiirumi)
         page_question = requests.get(QUESTION_LIST_URL)
@@ -564,7 +563,7 @@ def cancel(update, context):
 
 def main():
     jq = updater.job_queue
-    jq.run_repeating(_parse_fiirumi_posts, 60)
+    jq.run_repeating(parse_fiirumi_posts, interval=60, first=0, context=updater.bot)
 
     dp = updater.dispatcher
 
@@ -596,7 +595,7 @@ def main():
 
     dp.add_error_handler(error)
     updater.start_polling()
-    # updater.idle()
+    updater.idle()
 
 
 if __name__ == "__main__":
