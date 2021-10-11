@@ -5,7 +5,9 @@ import json
 import requests
 import logging
 
-from telegram.ext import Updater, MessageHandler, CommandHandler, Filters
+from telegram import Update,  InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, MessageHandler, CommandHandler, \
+    Filters, ConversationHandler, CallbackContext, CallbackQueryHandler
 from lxml import html, etree
 
 TOKEN = os.environ['VAALILAKANABOT_TOKEN']
@@ -21,6 +23,8 @@ BOARD = ['Puheenjohtaja', 'Varapuheenjohtaja', 'Rahastonhoitaja', 'Viestintävas
 
 OFFICIALS = ['ISOvastaava', 'Jatkuvuustoimikunnan puheenjohtaja', 'Excumestari',
              'Lukkarimestari', 'Kvantin päätoimittaja']
+
+SELECTING_POSITION_CLASS, SELECTING_POSITION, TYPING_NAME, CONFIRMING = range(4)
 
 channels = []
 vaalilakana = {}
@@ -323,65 +327,112 @@ def add_fiirumi_to_applicant(update, context):
         logger.error(e)
 
 
-def add_applicant(update, context):
+def add_applicant(update: Update, context: CallbackContext) -> None:
+    """Add an applicant. This command is for admin use."""
+    keyboard = [[
+        InlineKeyboardButton("Raatiin", callback_data='board'),
+        InlineKeyboardButton("Toimihenkilöksi", callback_data='official'),
+    ]]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    update.message.reply_text('Mihin rooliin henkilö lisätään?', reply_markup=reply_markup)
+    return SELECTING_POSITION_CLASS
+
+
+def generate_positions(position_class):
+    keyboard = []
+    for position in position_class:
+        keyboard.append(
+            [InlineKeyboardButton(position, callback_data=position)]
+        )
+    return keyboard
+
+
+def select_position_class(update: Update, context: CallbackContext) -> int:
+    """Parses the CallbackQuery and updates the message text."""
+    query = update.callback_query
+    query.answer()
+    chat_data = context.chat_data
+    logger.debug(str(chat_data))
+
+    # CallbackQueries need to be answered, even if no notification to the user is needed
+    # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
+    if query.data == '1':
+        logger.debug('Raati')
+        keyboard = InlineKeyboardMarkup(generate_positions(BOARD))
+        query.edit_message_reply_markup(keyboard)
+        return SELECTING_POSITION
+    elif query.data == '2':
+        logger.debug('Toimihenkilö')
+        keyboard = InlineKeyboardMarkup(generate_positions(OFFICIALS))
+        query.edit_message_reply_markup(keyboard)
+        return SELECTING_POSITION
+    else:
+        return SELECTING_POSITION_CLASS
+
+
+def select_board_position(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    keyboard = InlineKeyboardMarkup(generate_positions(BOARD))
+    query.edit_message_reply_markup(keyboard)
+    return SELECTING_POSITION
+
+
+def select_official_position(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    keyboard = InlineKeyboardMarkup(generate_positions(OFFICIALS))
+    query.edit_message_reply_markup(keyboard)
+    return SELECTING_POSITION
+
+
+def register_position(update: Update, context: CallbackContext) -> int:
+    """Parses the CallbackQuery and updates the message text."""
+    query = update.callback_query
+    chat_data = context.chat_data
+
+    # CallbackQueries need to be answered, even if no notification to the user is needed
+    # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
+    query.answer()
+    query.edit_message_text(text=f"Hakija rooliin: {query.data}\nKirjoita hakijan nimi vastauksena tähän viestiin")
+    chat_data['new_applicant_position'] = query.data
+    return TYPING_NAME
+
+
+def enter_applicant_name(update: Update, context: CallbackContext) -> int:
+    """Stores the info about the user and ends the conversation."""
+    user = update.message.from_user
+    chat_data = context.chat_data
+    logger.debug(chat_data)
+    name = update.message.text
+    logger.debug(name)
     try:
         chat_id = update.message.chat.id
-        logger.debug(chat_id)
-        logger.debug(ADMIN_CHAT_ID)
-        logger.debug(str(chat_id)==str(ADMIN_CHAT_ID))
-        if str(chat_id)==str(ADMIN_CHAT_ID):
-            logger.debug("Oot admin")
-            text = update.message.text.replace('/lisaa', '').strip()
-            params = text.split(',')
-            
-            try:
-                position = params[0].strip()
-                name = params[1].strip()
-                fiirumi = ''
-                if len(params) > 2:
-                    thread_id = params[2].strip()
-                    fiirumi = '{base}/t/{slug}/{thread_id}'.format(
-                        base = BASE_URL,
-                        slug = fiirumi_posts[thread_id]['slug'],
-                        thread_id = fiirumi_posts[thread_id]['id'])
-            except:
-                updater.bot.send_message(
-                    chat_id,
-                    'Virheelliset parametrit - /lisaa <virka>, <nimi>, thread ID'
-                )
-                raise Exception('Invalid parameters')
-            
-            new_applicant = {
-                'name': name,
-                'position': position,
-                'fiirumi': fiirumi,
-				'valittu': False
-            }
+        position = chat_data['new_applicant_position']
+        chat_data['new_applicant_name'] = name
 
-            if position not in vaalilakana:
-                updater.bot.send_message(
-                    chat_id,
-                    'Tunnistamaton virka: {}'.format(position),
-                    parse_mode='HTML'
-                )
-                raise Exception('Unknown position {}'.format(position))
+        new_applicant = {'name': name, 'position': position, 'fiirumi': '', 'valittu': False}
 
-            vaalilakana[position].append(new_applicant)
-            _save_data('data/vaalilakana.json', vaalilakana)
-            global last_applicant
-            last_applicant = new_applicant
+        vaalilakana[position].append(new_applicant)
+        _save_data('data/vaalilakana.json', vaalilakana)
+        global last_applicant
+        last_applicant = new_applicant
 
-            updater.bot.send_message(
-                chat_id,
-                'Lisätty:\n{position}: {name} ({fiirumi}).\n\nLähetä tiedote komennolla /tiedota'.format(
-                    **new_applicant
-                ),
-                parse_mode='HTML'
-            )
-
+        updater.bot.send_message(
+            chat_id,
+            'Lisätty:\n{position}: {name}.\n\nLähetä tiedote komennolla /tiedota'.format(
+                **new_applicant
+            ),
+            parse_mode='HTML'
+        )
     except Exception as e:
+        # TODO: Return to role selection
         logger.error(e)
-		
+    return ConversationHandler.END
+
+
 def add_selected_tag(update, context):
     try:
         chat_id = update.message.chat.id
@@ -503,21 +554,47 @@ def error(update, context):
     logger.warning('Update "%s" caused error "%s"', update, context.error)
 
 
+def cancel(update, context):
+    chat_data = context.chat_data
+    chat_data.clear()
 
-jq = updater.job_queue
-jq.run_repeating(_parse_fiirumi_posts, 60)
 
-updater.dispatcher.add_handler(CommandHandler('lisaa', add_applicant))
-updater.dispatcher.add_handler(CommandHandler('valittu', add_selected_tag))
-updater.dispatcher.add_handler(CommandHandler('lisaa_fiirumi', add_fiirumi_to_applicant))
-updater.dispatcher.add_handler(CommandHandler('poista', remove_applicant))
-updater.dispatcher.add_handler(CommandHandler('lakana', show_vaalilakana))
-updater.dispatcher.add_handler(CommandHandler('tiedota', announce_new_applicant))
-updater.dispatcher.add_handler(CommandHandler('start', register_channel))
-updater.dispatcher.add_handler(CommandHandler('jauhis', jauhis))
-updater.dispatcher.add_handler(CommandHandler('jauh', jauh))
+def main():
+    jq = updater.job_queue
+    jq.run_repeating(_parse_fiirumi_posts, 60)
 
-updater.dispatcher.add_error_handler(error)
-updater.start_polling()
-# updater.idle()
+    dp = updater.dispatcher
 
+    dp.add_handler(CommandHandler('valittu', add_selected_tag))
+    dp.add_handler(CommandHandler('lisaa_fiirumi', add_fiirumi_to_applicant))
+    dp.add_handler(CommandHandler('poista', remove_applicant))
+    dp.add_handler(CommandHandler('lakana', show_vaalilakana))
+    dp.add_handler(CommandHandler('tiedota', announce_new_applicant))
+    dp.add_handler(CommandHandler('start', register_channel))
+    dp.add_handler(CommandHandler('jauhis', jauhis))
+    dp.add_handler(CommandHandler('jauh', jauh))
+
+    conv_handler = ConversationHandler(
+            entry_points=[CommandHandler('lisaa', add_applicant)],
+            states={
+                SELECTING_POSITION_CLASS: [
+                    CallbackQueryHandler(select_board_position, pattern='^board$'),
+                    CallbackQueryHandler(select_official_position, pattern='^official$')
+                ],
+                SELECTING_POSITION: [
+                    CallbackQueryHandler(register_position)
+                ],
+                TYPING_NAME: [MessageHandler(Filters.text & (~Filters.command), enter_applicant_name)],
+            },
+            fallbacks=[CommandHandler('cancel', cancel), CommandHandler('lisaa', add_applicant)],
+        )
+
+    dp.add_handler(conv_handler)
+
+    dp.add_error_handler(error)
+    updater.start_polling()
+    # updater.idle()
+
+
+if __name__ == "__main__":
+    main()
