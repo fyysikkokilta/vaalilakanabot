@@ -336,9 +336,12 @@ def add_applicant(update: Update, context: CallbackContext) -> None:
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    update.message.reply_text('Mihin rooliin henkilö lisätään?', reply_markup=reply_markup)
-    return SELECTING_POSITION_CLASS
-
+    chat_id = update.message.chat.id
+    if str(chat_id) == str(ADMIN_CHAT_ID):
+        update.message.reply_text('Mihin rooliin henkilö lisätään?', reply_markup=reply_markup)
+        return SELECTING_POSITION_CLASS
+    else:
+        update.message.reply_text('Et oo admin :(((')
 
 def generate_positions(position_class):
     keyboard = []
