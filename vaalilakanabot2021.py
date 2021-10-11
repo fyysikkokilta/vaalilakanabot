@@ -14,8 +14,8 @@ TOKEN = os.environ['VAALILAKANABOT_TOKEN']
 ADMIN_CHAT_ID = os.environ['ADMIN_CHAT_ID']
 
 BASE_URL = 'https://fiirumi.fyysikkokilta.fi'
-TOPIC_LIST_URL = '{}/c/hottis-fiilaa/l/latest.json'.format(BASE_URL) #TODO: update this to correspond current year discussion board
-QUESTION_LIST_URL = '{}/c/kokousreferaatit/l/latest.json'.format(BASE_URL) #TODO: update this to correspond current year discussion board
+TOPIC_LIST_URL = '{}/c/vaalipeli-2021-esittelyt/l/latest.json'.format(BASE_URL) #TODO: update this to correspond current year discussion board
+QUESTION_LIST_URL = '{}/c/vaalipeli-2021-kysymykset/l/latest.json'.format(BASE_URL) #TODO: update this to correspond current year discussion board
 
 BOARD = ['Puheenjohtaja', 'Varapuheenjohtaja', 'Rahastonhoitaja', 'Viestintävastaava',
          'IE', 'Hupimestari', 'Yrityssuhdevastaava', 'Kv-vastaava', 'Opintovastaava',
