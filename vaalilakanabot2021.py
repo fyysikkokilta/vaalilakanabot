@@ -102,9 +102,9 @@ def _vaalilakana_to_string(vaalilakana):
                     output += '- {name}\n'.format(name=applicant['name'])
 
         output += '\n'
-    output += '<a>----------Toimihenkilöt----------</a>\n'
+    output += '<b>----------Toimihenkilöt----------</b>\n'
     for position in OFFICIALS:
-        output += '<a>{position}:</a>\n'.format(position=position)
+        output += '<b>{position}:</b>\n'.format(position=position)
         for applicant in vaalilakana[position]:
             link = applicant['fiirumi']
             selected = applicant['valittu']
