@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 LABEL version="2021" \
     description="Vaalilakanabot" \
@@ -9,6 +9,6 @@ COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 
 COPY assets ./assets
-COPY vaalilakanabot2021.py vaalilakanabot2021.py
+COPY vaalilakanabot2022.py vaalilakanabot2022.py
 
-CMD ["python3", "vaalilakanabot2021.py"]
+CMD ["python3", "vaalilakanabot2022.py"]

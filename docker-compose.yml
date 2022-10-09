@@ -2,22 +2,21 @@ version: '3.4'
 services:
   bot:
     build: .
-    image: ghcr.io/fyysikkokilta/vaalilakanabot:master
     volumes:
       - ./data:/bot/data:rw
       - ./logs:/bot/logs:rw
     env_file:
       - bot.env
-    profiles:
-      - prod
+    # profiles:
+    #   - prod
+    restart: always
 
-  dev-bot:
-    build: .
-    image: ghcr.io/fyysikkokilta/vaalilakanabot:dev
-    volumes:
-      - ./data:/bot/data:rw
-      - ./logs:/bot/logs:rw
-    env_file:
-      - bot.env
-    profiles:
-      - dev
+  # dev-bot:
+  #   build: .
+  #   volumes:
+  #     - ./data:/bot/data:rw
+  #     - ./logs:/bot/logs:rw
+  #   env_file:
+  #     - bot.env
+  #   profiles:
+  #     - dev
