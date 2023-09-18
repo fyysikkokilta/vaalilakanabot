@@ -9,7 +9,7 @@ import requests
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, MessageHandler, CommandHandler, \
-    Filters, ConversationHandler, CallbackContext, CallbackQueryHandler
+    filters, ConversationHandler, CallbackContext, CallbackQueryHandler
 
 TOKEN = os.environ['VAALILAKANABOT_TOKEN']
 ADMIN_CHAT_ID = os.environ['ADMIN_CHAT_ID']
@@ -573,7 +573,7 @@ def main():
             SELECTING_POSITION: [
                 CallbackQueryHandler(register_position)
             ],
-            TYPING_NAME: [MessageHandler(Filters.text & (~Filters.command), enter_applicant_name)],
+            TYPING_NAME: [MessageHandler(filters.text & (~filters.command), enter_applicant_name)],
         },
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('lisaa', add_applicant)],
     )
