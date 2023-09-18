@@ -31,6 +31,8 @@ Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista 
 Botti tukee seuraavia komentoja:
 - `/start` Rekisteröi ryhmän botin tiedotuskanavaksi ja ryhmää saa botilta ilmoituksia.
 - `/jauhis` Näytää vaaliaiheisen kuvan.
+- `/jauh` Näytää vaaliaiheisen kuvan.
+- `/jaauh` Näytää vaaliaiheisen kuvan.
 - `/lakana` Näytää vaalien ehdokastilanteen.
 
 Admin-chatissa seuraavat komennot ovat käytössä:
