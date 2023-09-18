@@ -573,7 +573,7 @@ def main():
             SELECTING_POSITION: [
                 CallbackQueryHandler(register_position)
             ],
-            TYPING_NAME: [MessageHandler(filters.text & (~filters.command), enter_applicant_name)],
+            TYPING_NAME: [MessageHandler(filters.Text & (~filters.command), enter_applicant_name)],
         },
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('lisaa', add_applicant)],
     )
