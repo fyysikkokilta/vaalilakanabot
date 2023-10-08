@@ -22,7 +22,7 @@ jobs:
       - uses: actions/cache@v2
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-${{ env.pythonLocation }}-pip-${{ hashFiles('**/vaalilakanabot2021.py') }}
+          key: ${{ runner.os }}-${{ env.pythonLocation }}-pip-${{ hashFiles('**/vaalilakanabot2023.py') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.pythonLocation }}-pip-
       - name: Install dependencies
