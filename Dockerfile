@@ -9,6 +9,6 @@ COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 
 COPY assets ./assets
-COPY vaalilakanabot2022.py vaalilakanabot2022.py
+COPY vaalilakanabot2023.py vaalilakanabot2023.py
 
-CMD ["python3", "vaalilakanabot2022.py"]
+CMD ["python3", "vaalilakanabot2023.py"]
