@@ -17,8 +17,8 @@ ADMIN_CHAT_ID = os.environ['ADMIN_CHAT_ID']
 BASE_URL = 'https://fiirumi.fyysikkokilta.fi'
 
 # TODO: update these to correspond current year discussion board
-TOPIC_LIST_URL = f'{BASE_URL}/c/vaalipeli-2022-esittelyt/l/latest.json'
-QUESTION_LIST_URL = f'{BASE_URL}/c/vaalipeli-2022-kysymykset/l/latest.json'
+TOPIC_LIST_URL = f'{BASE_URL}/c/vaalipeli-2023/esittelyt/l/latest.json'
+QUESTION_LIST_URL = f'{BASE_URL}/c/vaalipeli-2023/kysymykset/l/latest.json'
 
 BOARD = ['Puheenjohtaja', 'Varapuheenjohtaja', 'Rahastonhoitaja', 'Viestintävastaava',
          'IE', 'Hupimestari', 'Yrityssuhdevastaava', 'Kv-vastaava', 'Opintovastaava',
