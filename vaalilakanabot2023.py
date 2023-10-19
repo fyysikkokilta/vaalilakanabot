@@ -412,6 +412,51 @@ def enter_applicant_name(update: Update, context: CallbackContext) -> int:
         logger.error(e)
     return ConversationHandler.END
 
+def unassociate_fiirumi(update, context):
+    try:
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+            # Converts /poista_fiirumi Puheenjohtaja, Fysisti kiltalainen
+            # to ["Puheenjohtaja", "Fysisti kiltalainen"]
+            params = [
+                arg.strip()
+                for arg in update.message.text.replace('/poista_fiirumi','').strip().split(',')
+            ]
+            # Try find role
+            try:
+                role, applicant = params
+            except Exception as e:
+                updater.bot.send_message(chat_id, 'Virheelliset parametrit - /poista_fiirumi <virka>, <nimi>')
+                return
+
+            if role not in vaalilakana:
+                updater.bot.send_message(chat_id, 'Virheelliset parametrit, roolia ei löytynyt')
+                return
+
+            # Try finding the dict with matching applicant name from vaalilakana
+            for app_info in vaalilakana[role]:
+                if app_info['name'] == applicant:
+                    app_info['fiirumi'] = ""
+                    break
+            else:
+                # If the loop didn't break
+                updater.bot.send_message(chat_id, 'Virheelliset parametrit, hakijaa ei löytynyt roolille')
+                return
+            _save_data('data/vaalilakana.json', vaalilakana)
+            updater.bot.send_message(
+                chat_id,
+                'Fiirumi linkki poistettu:\n{name}'.format(
+                    name=applicant
+                ),
+                parse_mode='HTML'
+            )
+        else:
+            # Not admin chat
+            pass
+    except Exception as e:
+        # Unknown error :/
+        logger.error(e)
+            
 
 def add_selected_tag(update, context):
     try:
@@ -557,6 +602,8 @@ def cancel(update, context):
     chat_data.clear()
 
 
+        
+
 def main():
     jq = updater.job_queue
     jq.run_repeating(parse_fiirumi_posts, interval=60, first=0, context=updater.bot)
@@ -565,6 +612,7 @@ def main():
 
     dp.add_handler(CommandHandler('valittu', add_selected_tag))
     dp.add_handler(CommandHandler('lisaa_fiirumi', add_fiirumi_to_applicant))
+    dp.add_handler(CommandHandler('poista_fiirumi', unassociate_fiirumi))
     dp.add_handler(CommandHandler('poista', remove_applicant))
     dp.add_handler(CommandHandler('lakana', show_vaalilakana))
     dp.add_handler(CommandHandler('tiedota', announce_new_applicant))
