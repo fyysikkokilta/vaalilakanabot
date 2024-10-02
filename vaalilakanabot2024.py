@@ -121,9 +121,9 @@ def _vaalilakana_to_string(lakana):
 
 def parse_fiirumi_posts(context=updater.bot):
     try:
-        page_fiirumi = requests.get(TOPIC_LIST_URL)
+        page_fiirumi = requests.get(TOPIC_LIST_URL, timeout=10)
         logger.debug(page_fiirumi)
-        page_question = requests.get(QUESTION_LIST_URL)
+        page_question = requests.get(QUESTION_LIST_URL, timeout=10)
         topic_list_raw = page_fiirumi.json()
         logger.debug(str(topic_list_raw))
         question_list_raw = page_question.json()
@@ -197,13 +197,13 @@ def remove_applicant(update, context):
                 updater.bot.send_message(
                     chat_id, "Virheelliset parametrit - /poista <virka>, <nimi>"
                 )
-                raise Exception("Invalid parameters") from e
+                raise ValueError("Invalid parameters") from e
 
             if position not in vaalilakana:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
-                raise Exception(f"Unknown position {position}")
+                raise ValueError(f"Unknown position {position}")
 
             found = None
             for applicant in vaalilakana[position]:
@@ -215,7 +215,7 @@ def remove_applicant(update, context):
                 updater.bot.send_message(
                     chat_id, f"Hakijaa ei löydy {name}", parse_mode="HTML"
                 )
-                raise Exception(f"Applicant not found: {name}")
+                raise ValueError(f"Applicant not found: {name}")
 
             vaalilakana[position].remove(found)
             _save_data("data/vaalilakana.json", vaalilakana)
@@ -247,13 +247,13 @@ def add_fiirumi_to_applicant(update, context):
                     chat_id,
                     "Virheelliset parametrit - /lisaa_fiirumi <virka>, <nimi>, <thread id>",
                 )
-                raise Exception("Invalid parameters") from e
+                raise ValueError("Invalid parameters") from e
 
             if position not in vaalilakana:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
-                raise Exception(f"Unknown position {position}")
+                raise ValueError(f"Unknown position {position}")
 
             if thread_id not in fiirumi_posts:
                 updater.bot.send_message(
@@ -261,7 +261,7 @@ def add_fiirumi_to_applicant(update, context):
                     f"Fiirumi-postausta ei löytynyt annetulla id:llä: {thread_id}",
                     parse_mode="HTML",
                 )
-                raise Exception(f"Unknown thread {thread_id}")
+                raise ValueError(f"Unknown thread {thread_id}")
 
             found = None
             for applicant in vaalilakana[position]:
@@ -275,7 +275,7 @@ def add_fiirumi_to_applicant(update, context):
                 updater.bot.send_message(
                     chat_id, f"Hakijaa ei löydy {name}", parse_mode="HTML"
                 )
-                raise Exception(f"Applicant not found: {name}")
+                raise ValueError(f"Applicant not found: {name}")
 
             _save_data("data/vaalilakana.json", vaalilakana)
             global last_applicant
@@ -427,6 +427,7 @@ def unassociate_fiirumi(update, context):
             try:
                 role, applicant = params
             except Exception as e:
+                logger.error(e)
                 updater.bot.send_message(
                     chat_id, "Virheelliset parametrit - /poista_fiirumi <virka>, <nimi>"
                 )
@@ -477,13 +478,13 @@ def add_selected_tag(update, context):
                 updater.bot.send_message(
                     chat_id, "Virheelliset parametrit - /valittu <virka>, <nimi>"
                 )
-                raise Exception from e
+                raise ValueError from e
 
             if position not in vaalilakana:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
-                raise Exception(f"Unknown position {position}")
+                raise ValueError(f"Unknown position {position}")
 
             found = None
             for applicant in vaalilakana[position]:
@@ -496,7 +497,7 @@ def add_selected_tag(update, context):
                 updater.bot.send_message(
                     chat_id, f"Hakijaa ei löydy {name}", parse_mode="HTML"
                 )
-                raise Exception(f"Applicant not found: {name}")
+                raise ValueError(f"Applicant not found: {name}")
 
             _save_data("data/vaalilakana.json", vaalilakana)
             global last_applicant
