@@ -83,7 +83,8 @@ def _vaalilakana_to_string(lakana):
     # Hardcoded to maintain order instead using dict keys
     for position in BOARD:
         output += f"<b>{position}:</b>\n"
-        for applicant in lakana[position]:
+        applicants = lakana[position] if position in lakana else []
+        for applicant in applicants:
             link = applicant["fiirumi"]
             selected = applicant["valittu"]
             if selected:
@@ -101,7 +102,8 @@ def _vaalilakana_to_string(lakana):
     output += "<b>----------Toimihenkilöt----------</b>\n"
     for position in OFFICIALS:
         output += f"<b>{position}:</b>\n"
-        for applicant in lakana[position]:
+        applicants = lakana[position] if position in lakana else []
+        for applicant in applicants:
             link = applicant["fiirumi"]
             selected = applicant["valittu"]
             if selected:
@@ -199,14 +201,15 @@ def remove_applicant(update, context):
                 )
                 raise ValueError("Invalid parameters") from e
 
-            if position not in vaalilakana:
+            if position not in BOARD and position not in OFFICIALS:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
                 raise ValueError(f"Unknown position {position}")
 
             found = None
-            for applicant in vaalilakana[position]:
+            applicants = vaalilakana[position] if position in vaalilakana else []
+            for applicant in applicants:
                 if name == applicant["name"]:
                     found = applicant
                     break
@@ -249,7 +252,7 @@ def add_fiirumi_to_applicant(update, context):
                 )
                 raise ValueError("Invalid parameters") from e
 
-            if position not in vaalilakana:
+            if position not in BOARD and position not in OFFICIALS:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
@@ -264,7 +267,9 @@ def add_fiirumi_to_applicant(update, context):
                 raise ValueError(f"Unknown thread {thread_id}")
 
             found = None
-            for applicant in vaalilakana[position]:
+
+            applicants = vaalilakana[position] if position in vaalilakana else []
+            for applicant in applicants:
                 if name == applicant["name"]:
                     found = applicant
                     fiirumi = f'{BASE_URL}/t/{fiirumi_posts[thread_id]["slug"]}/{fiirumi_posts[thread_id]["id"]}'
@@ -393,6 +398,9 @@ def enter_applicant_name(update: Update, context: CallbackContext) -> int:
             "valittu": False,
         }
 
+        if position not in vaalilakana:
+            vaalilakana[position] = []
+
         vaalilakana[position].append(new_applicant)
         _save_data("data/vaalilakana.json", vaalilakana)
         global last_applicant
@@ -433,16 +441,17 @@ def unassociate_fiirumi(update, context):
                 )
                 return
 
-            if role not in vaalilakana:
+            if role not in BOARD and role not in OFFICIALS:
                 updater.bot.send_message(
                     chat_id, "Virheelliset parametrit, roolia ei löytynyt"
                 )
                 return
 
             # Try finding the dict with matching applicant name from vaalilakana
-            for app_info in vaalilakana[role]:
-                if app_info["name"] == applicant:
-                    app_info["fiirumi"] = ""
+            applicants = vaalilakana[role] if role in vaalilakana else []
+            for applicant in applicants:
+                if applicant["name"] == applicant:
+                    applicant["fiirumi"] = ""
                     break
             else:
                 # If the loop didn't break
@@ -480,14 +489,15 @@ def add_selected_tag(update, context):
                 )
                 raise ValueError from e
 
-            if position not in vaalilakana:
+            if position not in BOARD and position not in OFFICIALS:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
                 raise ValueError(f"Unknown position {position}")
 
             found = None
-            for applicant in vaalilakana[position]:
+            applicants = vaalilakana[position] if position in vaalilakana else []
+            for applicant in applicants:
                 if name == applicant["name"]:
                     found = applicant
                     applicant["valittu"] = True
