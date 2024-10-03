@@ -572,6 +572,14 @@ def jauh(update, context):
     except Exception as e:
         logger.warning("Error in sending Jauh %s", e)
 
+def jauho(update, context):
+    try:
+        chat_id = update.message.chat.id
+        with open("assets/jauho.png", "rb") as photo:
+            updater.bot.send_sticker(chat_id, photo)
+    except Exception as e:
+        logger.warning("Error in sending Jauh %s", e)
+
 
 def lauh(update, context):
     try:
@@ -616,6 +624,7 @@ def main():
     dp.add_handler(CommandHandler("start", register_channel))
     dp.add_handler(CommandHandler("jauhis", jauhis))
     dp.add_handler(CommandHandler("jauh", jauh))
+    dp.add_handler(CommandHandler("jauho", jauho))
     dp.add_handler(CommandHandler("lauh", lauh))
     dp.add_handler(CommandHandler("mauh", mauh))
 
