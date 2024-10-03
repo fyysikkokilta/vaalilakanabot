@@ -17,15 +17,8 @@ Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista 
 
 ## Running the bot with Docker
 - create copies of the example_*.json files with such names that the "example_" part is removed.
-- create `bot.env` where `VAALILAKANABOT_TOKEN` and `ADMIN_CHAT_ID` env variables are stored
-- Update TOPIC_LIST_URL ja QUESTION_LIST_URL -variables in the code. See [Discourse documentation](https://docs.discourse.org/#tag/Categories/paths/~1c~1{id}.json/get) for formatting.
-- ```bash
-  # Use this to run the development container (from dev branch in GitHub) 
-  docker-compose -f docker-compose.yml --profile dev up -d
-  
-  # Use this to run the production container (from master branch in GitHub) 
-  docker-compose -f docker-compose.yml --profile prod up -d
-    ```
+- create `bot.env` according to the example file `bot.env.example`
+- start the bot using provided `update-deployment.sh` script
 
 ## Komennot
 Botti tukee seuraavia komentoja:
