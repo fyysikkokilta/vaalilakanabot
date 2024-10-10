@@ -182,11 +182,12 @@ def parse_fiirumi_posts(context=updater.bot):
             _save_data("data/question_posts.json", question_posts)
             if has_new_posts:
                 last_poster = question["last_poster_username"]
-                _announce_to_channels(
-                    f"""<b>Uusia vastauksia Fiirumilla!</b>\n
-                    {title}\n{BASE_URL}/t/{slug}/{t_id}/{posts_count}\n
-                    Viimeisin vastaaja: {last_poster}"""
+                announcement = (
+                    f"<b>Uusia vastauksia Fiirumilla!</b>\n"
+                    f"{title}\n{BASE_URL}/t/{slug}/{t_id}/{posts_count}\n"
+                    f"Viimeisin vastaaja: {last_poster}"
                 )
+                _announce_to_channels(announcement)
 
 
 def _announce_to_channels(message):
