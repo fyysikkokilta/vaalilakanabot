@@ -67,7 +67,7 @@ with open("data/question_posts.json", "r") as f:
     data = f.read()
     question_posts = json.loads(data)
 
-logger.info("Loaded question posts: %s", fiirumi_posts)
+logger.info("Loaded question posts: %s", question_posts)
 
 updater = Updater(TOKEN, use_context=True)
 
@@ -162,17 +162,28 @@ def parse_fiirumi_posts(context=updater.bot):
         t_id = question["id"]
         title = question["title"]
         slug = question["slug"]
+        posts_count = question["posts_count"]
         if str(t_id) not in question_posts:
             new_question = {
                 "id": t_id,
                 "title": title,
                 "slug": slug,
+                "posts_count": posts_count,
             }
             question_posts[str(t_id)] = new_question
             _save_data("data/question_posts.json", question_posts)
             _announce_to_channels(
                 f"<b>Uusi kysymys Fiirumilla!</b>\n{title}\n{BASE_URL}/t/{slug}/{t_id}"
             )
+
+        else:
+            has_new_posts = posts_count > question_posts[str(t_id)]["posts_count"]
+            question_posts[str(t_id)]["posts_count"] = posts_count
+            _save_data("data/question_posts.json", question_posts)
+            if has_new_posts:
+                _announce_to_channels(
+                    f"<b>Uusia vastauksia kysymykseen Fiirumilla!</b>\n{title}\n{BASE_URL}/t/{slug}/{t_id}"
+                )
 
 
 def _announce_to_channels(message):
@@ -581,6 +592,7 @@ def jauh(update, context):
             updater.bot.send_sticker(chat_id, photo)
     except Exception as e:
         logger.warning("Error in sending Jauh %s", e)
+
 
 def jauho(update, context):
     try:
