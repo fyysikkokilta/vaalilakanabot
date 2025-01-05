@@ -17,14 +17,18 @@ Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista 
 
 ## Running the bot with Docker
 - create copies of the example_*.json files with such names that the "example_" part is removed.
+- create a Google Sheets file to store the received applications
 - create `bot.env` according to the example file `bot.env.example`
+- create a Google service account with Google Drive API (read-write) permissions. Add the credentials to a file named `google_service_account_creds.json`.
 - start the bot using provided `update-deployment.sh` script
 
 ## Komennot
 Botti tukee seuraavia komentoja:
 - `/start` Rekisteröi ryhmän botin tiedotuskanavaksi ja ryhmää saa botilta ilmoituksia.
+- `/hae` Aloittaa hakemuslomakkeen täyttämisen.
 - `/jauhis` Näytää vaaliaiheisen kuvan.
 - `/jauh` Näytää vaaliaiheisen kuvan.
+- `/jauho` Näytää vaaliaiheisen kuvan.
 - `/lauh` Näytää vaaliaiheisen kuvan.
 - `/mauh` Näytää vaaliaiheisen kuvan.
 - `/lakana` Näytää vaalien ehdokastilanteen.

@@ -16,6 +16,9 @@ from telegram.ext import (
     CallbackQueryHandler,
 )
 
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+
 TOKEN = os.environ["VAALILAKANABOT_TOKEN"]
 ADMIN_CHAT_ID = os.environ["ADMIN_CHAT_ID"]
 BASE_URL = os.environ["BASE_URL"]
@@ -26,7 +29,18 @@ QUESTION_LIST_URL = os.environ["QUESTION_LIST_URL"]
 BOARD = os.environ["BOARD"].split(",")
 OFFICIALS = os.environ["OFFICIALS"].split(",")
 
-SELECTING_POSITION_CLASS, SELECTING_POSITION, TYPING_NAME, CONFIRMING = range(4)
+SELECTING_POSITION_CLASS = "SELECTING_POSITION_CLASS"
+SELECTING_POSITION = "SELECTING_POSITION"
+TYPING_NAME = "TYPING_NAME"
+
+SELECTING_LANGUAGE = "SELECTING_LANGUAGE"
+APPLYING_TO_ELECTED_OR_NON_ELECTED = "APPLYING_TO_ELECTED_OR_NON_ELECTED"
+SELECTING_ELECTED_POSITION = "SELECTING_ELECTED_POSITION"
+SELECTING_NON_ELECTED_POSITION = "SELECTING_NON_ELECTED_POSITION"
+GIVING_NAME = "GIVING_NAME"
+GIVING_EMAIL = "GIVING_EMAIL"
+GIVING_TELEGRAM = "GIVING_TELEGRAM"
+CONFIRMING_APPLICATION = "CONFIRMING_APPLICATION"
 
 channels = []
 vaalilakana = {}
@@ -44,6 +58,11 @@ fh.setLevel(logging.INFO)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 fh.setFormatter(formatter)
 logger.addHandler(fh)
+
+creds = Credentials.from_service_account_file(
+    os.environ.get("GOOGLE_SERVICE_ACCOUNT_CREDS", "google_service_account_creds.json"),
+    scopes=["https://www.googleapis.com/auth/spreadsheets"],
+)
 
 with open("data/vaalilakana.json", "r") as f:
     data = f.read()
@@ -119,6 +138,31 @@ def _vaalilakana_to_string(lakana):
 
         output += "\n"
     return output
+
+
+def _add_applicant_to_sheet(applicant):
+    service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+    sheet = service.spreadsheets()
+    sheet_id = os.environ["APPLICANT_SHEET_ID"]
+
+    timestamp = time.strftime("%d.%m.%Y klo %H:%M:%S")
+    name = applicant["new_applicant_name"]
+    position = applicant["new_applicant_position"]
+    email = applicant["new_applicant_email"]
+    telegram = applicant["new_applicant_telegram"]
+
+    body = {"values": [[timestamp, name, position, email, telegram]]}
+
+    (
+        sheet.values()
+        .append(
+            spreadsheetId=sheet_id,
+            range="A1:A",
+            valueInputOption="RAW",
+            body=body,
+        )
+        .execute()
+    )
 
 
 def parse_fiirumi_posts(context=updater.bot):
@@ -434,6 +478,232 @@ def enter_applicant_name(update: Update, context: CallbackContext) -> int:
     return ConversationHandler.END
 
 
+def hae(update: Update, context: CallbackContext) -> int:
+    """Apply for a position."""
+    keyboard = [
+        [
+            InlineKeyboardButton("Suomeksi", callback_data="fi"),
+            InlineKeyboardButton("In English", callback_data="en"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    update.message.reply_text(
+        "In which language would you like to apply?", reply_markup=reply_markup
+    )
+    return SELECTING_LANGUAGE
+
+
+def apply_elected_or_non_elected(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    chat_data = context.chat_data
+    query.answer()
+    if query.data == "fi":
+        chat_data["new_applicant_language"] = "fi"
+        query.edit_message_text(
+            text="Haetko vaaleilla valittavaan virkaan?",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [InlineKeyboardButton("Kyllä", callback_data="elected")],
+                    [InlineKeyboardButton("En", callback_data="non_elected")],
+                ]
+            ),
+        )
+    else:
+        chat_data["new_applicant_language"] = "en"
+        query.edit_message_text(
+            text="Are you applying to an elected position?",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [InlineKeyboardButton("Yes", callback_data="elected")],
+                    [InlineKeyboardButton("No", callback_data="non_elected")],
+                ]
+            ),
+        )
+
+    return APPLYING_TO_ELECTED_OR_NON_ELECTED
+
+
+def apply_elected_position(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    chat_data = context.chat_data
+    query.answer()
+    keyboard = InlineKeyboardMarkup(generate_positions(BOARD + OFFICIALS))
+    text = (
+        "Mihin rooliin haet?"
+        if chat_data["new_applicant_language"] == "fi"
+        else "What position are you applying to?"
+    )
+    query.edit_message_text(
+        text=text,
+    )
+    query.edit_message_reply_markup(keyboard)
+    return SELECTING_ELECTED_POSITION
+
+
+def apply_non_elected_position(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    chat_data = context.chat_data
+    query.answer()
+    text = (
+        "Mihin rooliin haet?"
+        if chat_data["new_applicant_language"] == "fi"
+        else "What position are you applying to?"
+    )
+    query.edit_message_text(
+        text=text,
+    )
+    return SELECTING_NON_ELECTED_POSITION
+
+
+def select_elected(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    chat_data = context.chat_data
+    query.answer()
+    text = (
+        f"Haet rooliin: {query.data}. Mikä on nimesi?"
+        if chat_data["new_applicant_language"] == "fi"
+        else f"You are applying to: {query.data}. What is your name?"
+    )
+    query.edit_message_text(
+        text=text,
+    )
+    chat_data["new_applicant_position"] = query.data
+    return GIVING_NAME
+
+
+def select_non_elected(update: Update, context: CallbackContext) -> int:
+    chat_data = context.chat_data
+    position = update.message.text
+    chat_data["new_applicant_position"] = position
+    text = (
+        "Mikä on nimesi?"
+        if chat_data["new_applicant_language"] == "fi"
+        else "What is your name?"
+    )
+    update.message.reply_text(text)
+    return GIVING_NAME
+
+
+def enter_name(update: Update, context: CallbackContext) -> int:
+    chat_data = context.chat_data
+    name = update.message.text
+    chat_data["new_applicant_name"] = name
+    text = (
+        "Mikä on sähköpostiosoitteesi?"
+        if chat_data["new_applicant_language"] == "fi"
+        else "What is your email address?"
+    )
+    update.message.reply_text(text)
+    return GIVING_EMAIL
+
+
+def enter_email(update: Update, context: CallbackContext) -> int:
+    chat_data = context.chat_data
+    email = update.message.text
+    chat_data["new_applicant_email"] = email
+    text = (
+        "Mikä on Telegram-käyttäjänimesi?"
+        if chat_data["new_applicant_language"] == "fi"
+        else "What is your Telegram username?"
+    )
+    update.message.reply_text(text)
+    return GIVING_TELEGRAM
+
+
+def enter_telegram(update: Update, context: CallbackContext) -> int:
+    chat_data = context.chat_data
+    telegram = update.message.text
+    chat_data["new_applicant_telegram"] = telegram
+
+    is_finnish = chat_data["new_applicant_language"] == "fi"
+
+    text = (
+        (
+            f"Hakemuksesi tiedot: \n"
+            f"<b>Haettava rooli</b>: {chat_data['new_applicant_position']}\n"
+            f"<b>Nimi</b>: {chat_data['new_applicant_name']}\n"
+            f"<b>Sähköposti</b>: {chat_data['new_applicant_email']}\n"
+            f"<b>Telegram</b>: {chat_data['new_applicant_telegram']}\n\n"
+            f"Haluatko lähettää hakemuksen?"
+        )
+        if is_finnish
+        else (
+            f"Your application details: \n"
+            f"<b>Position</b>: {chat_data['new_applicant_position']}\n"
+            f"<b>Name</b>: {chat_data['new_applicant_name']}\n"
+            f"<b>Email</b>: {chat_data['new_applicant_email']}\n"
+            f"<b>Telegram</b>: {chat_data['new_applicant_telegram']}\n\n"
+            f"Do you want to send the application?"
+        )
+    )
+    text_yes = "Kyllä" if is_finnish else "Yes"
+    text_no = "En" if is_finnish else "No"
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(text_yes, callback_data="yes"),
+                InlineKeyboardButton(text_no, callback_data="no"),
+            ]
+        ]
+    )
+
+    update.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
+    return CONFIRMING_APPLICATION
+
+
+def confirm_application(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    chat_data = context.chat_data
+
+    is_finnish = chat_data["new_applicant_language"] == "fi"
+
+    query.answer()
+    try:
+        if query.data == "yes":
+            new_applicant = {
+                "name": chat_data["new_applicant_name"],
+                "position": chat_data["new_applicant_position"],
+                "fiirumi": "",
+                "valittu": False,
+            }
+
+            if chat_data["new_applicant_position"] in BOARD + OFFICIALS:
+                if chat_data["new_applicant_position"] not in vaalilakana:
+                    vaalilakana[chat_data["new_applicant_position"]] = []
+                vaalilakana[chat_data["new_applicant_position"]].append(new_applicant)
+                _save_data("data/vaalilakana.json", vaalilakana)
+                _announce_to_channels(
+                    "<b>Uusi nimi vaalilakanassa!</b>\n{position}: <i>{name}</i>".format(
+                        **new_applicant
+                    )
+                )
+
+            _add_applicant_to_sheet(chat_data)
+
+            text = (
+                "Hakemuksesi on vastaanotettu. Kiitos!"
+                if is_finnish
+                else "Your application has been received. Thank you!"
+            )
+            query.edit_message_text(text)
+            query.edit_message_reply_markup(None)
+        else:
+            text = (
+                "Hakemuksesi on peruttu."
+                if is_finnish
+                else "Your application has been cancelled."
+            )
+            query.edit_message_text(text)
+            query.edit_message_reply_markup(None)
+
+    except Exception as e:
+        # TODO: Return to role selection
+        logger.error(e)
+
+    return ConversationHandler.END
+
+
 def unassociate_fiirumi(update, context):
     try:
         chat_id = update.message.chat.id
@@ -654,7 +924,7 @@ def main():
     dp.add_handler(CommandHandler("lauh", lauh))
     dp.add_handler(CommandHandler("mauh", mauh))
 
-    conv_handler = ConversationHandler(
+    admin_add_handler = ConversationHandler(
         entry_points=[CommandHandler("lisaa", add_applicant)],
         states={
             SELECTING_POSITION_CLASS: [
@@ -672,7 +942,40 @@ def main():
         ],
     )
 
-    dp.add_handler(conv_handler)
+    dp.add_handler(admin_add_handler)
+
+    apply_handler = ConversationHandler(
+        entry_points=[CommandHandler("hae", hae, Filters.chat_type.private)],
+        states={
+            SELECTING_LANGUAGE: [CallbackQueryHandler(apply_elected_or_non_elected)],
+            APPLYING_TO_ELECTED_OR_NON_ELECTED: [
+                CallbackQueryHandler(apply_elected_position, pattern="^elected$"),
+                CallbackQueryHandler(
+                    apply_non_elected_position, pattern="^non_elected$"
+                ),
+            ],
+            SELECTING_ELECTED_POSITION: [CallbackQueryHandler(select_elected)],
+            SELECTING_NON_ELECTED_POSITION: [
+                MessageHandler(Filters.text & (~Filters.command), select_non_elected),
+            ],
+            GIVING_NAME: [
+                MessageHandler(Filters.text & (~Filters.command), enter_name)
+            ],
+            GIVING_EMAIL: [
+                MessageHandler(Filters.text & (~Filters.command), enter_email)
+            ],
+            GIVING_TELEGRAM: [
+                MessageHandler(Filters.text & (~Filters.command), enter_telegram)
+            ],
+            CONFIRMING_APPLICATION: [CallbackQueryHandler(confirm_application)],
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("hae", hae),
+        ],
+    )
+
+    dp.add_handler(apply_handler)
 
     dp.add_error_handler(error)
     updater.start_polling()
