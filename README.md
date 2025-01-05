@@ -12,7 +12,7 @@ Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista 
 - lisää Bot Fatherilta saatava `VAALILAKANABOT_TOKEN` ympäristönmuuttujaksi käyttöjärjestelmään.
 - täydennä ADMIN_CHAT_ID koodiin (halutun ryhmän id:n saa esimerkiksi lisäämällä botin `@RawDataBot` haluttuun ryhmään)
 - Päivitä TOPIC_LIST_URL ja QUESTION_LIST_URL -muuttujat koodiin. Katso [Discoursen dokumentaatio](https://docs.discourse.org/#tag/Categories/paths/~1c~1{id}.json/get) oikeanlaisen URL:n asettamiseksi.
-- `$ python vaalilakanabot2019.py` 
+- `$ python vaalilakanabot.py` 
 - lisää botti relevantteihin keskusteluryhmiin
 
 ## Running the bot with Docker

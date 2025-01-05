@@ -22,10 +22,10 @@ jobs:
       - uses: actions/cache@v2
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-${{ env.pythonLocation }}-pip-${{ hashFiles('**/vaalilakanabot2024.py') }}
+          key: ${{ runner.os }}-${{ env.pythonLocation }}-pip-${{ hashFiles('**/vaalilakanabot.py') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.pythonLocation }}-pip-
       - name: Install dependencies
         run: pip install -r requirements.txt && pip install pylint
       - name: Run pylint
-        run: pylint vaalilakanabot2024.py
+        run: pylint vaalilakanabot.py
