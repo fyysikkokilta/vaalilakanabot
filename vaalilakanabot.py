@@ -26,17 +26,30 @@ BASE_URL = os.environ["BASE_URL"]
 TOPIC_LIST_URL = os.environ["TOPIC_LIST_URL"]
 QUESTION_LIST_URL = os.environ["QUESTION_LIST_URL"]
 
+# Election positions
 BOARD = os.environ["BOARD"].split(",")
-OFFICIALS = os.environ["OFFICIALS"].split(",")
+ELECTED_OFFICIALS = os.environ["ELECTED_OFFICIALS"].split(",")
+
+# Divisions
+DIVISIONS = os.environ["DIVISIONS"].split(",")
+
+# Official positions
+EVENT = os.environ["EVENT"].split(",")
+WELFARE = os.environ["WELFARE"].split(",")
+INFORMATION = os.environ["INFORMATION"].split(",")
+FOREIGN = os.environ["FOREIGN"].split(",")
+CORPORATE = os.environ["CORPORATE"].split(",")
+ACADEMIC = os.environ["ACADEMIC"].split(",")
+FUKSI = os.environ["FUKSI"].split(",")
+OTHER = os.environ["OTHER"].split(",")
 
 SELECTING_POSITION_CLASS = "SELECTING_POSITION_CLASS"
 SELECTING_POSITION = "SELECTING_POSITION"
 TYPING_NAME = "TYPING_NAME"
 
 SELECTING_LANGUAGE = "SELECTING_LANGUAGE"
-APPLYING_TO_ELECTED_OR_NON_ELECTED = "APPLYING_TO_ELECTED_OR_NON_ELECTED"
-SELECTING_ELECTED_POSITION = "SELECTING_ELECTED_POSITION"
-SELECTING_NON_ELECTED_POSITION = "SELECTING_NON_ELECTED_POSITION"
+SELECTING_DIVISION = "SELECTING_DIVISION"
+SELECTING_ROLE = "SELECTING_ROLE"
 GIVING_NAME = "GIVING_NAME"
 GIVING_EMAIL = "GIVING_EMAIL"
 GIVING_TELEGRAM = "GIVING_TELEGRAM"
@@ -119,7 +132,7 @@ def _vaalilakana_to_string(lakana):
 
         output += "\n"
     output += "<b>----------Toimihenkilöt----------</b>\n"
-    for position in OFFICIALS:
+    for position in ELECTED_OFFICIALS:
         output += f"<b>{position}:</b>\n"
         applicants = lakana[position] if position in lakana else []
         for applicant in applicants:
@@ -260,7 +273,7 @@ def remove_applicant(update, context):
                 )
                 raise ValueError("Invalid parameters") from e
 
-            if position not in BOARD and position not in OFFICIALS:
+            if position not in BOARD and position not in ELECTED_OFFICIALS:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
@@ -311,7 +324,7 @@ def add_fiirumi_to_applicant(update, context):
                 )
                 raise ValueError("Invalid parameters") from e
 
-            if position not in BOARD and position not in OFFICIALS:
+            if position not in BOARD and position not in ELECTED_OFFICIALS:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
@@ -378,10 +391,10 @@ def add_applicant(update: Update, context: CallbackContext) -> None:
         return None
 
 
-def generate_positions(position_class):
+def generate_keyboard(options):
     keyboard = []
-    for position in position_class:
-        keyboard.append([InlineKeyboardButton(position, callback_data=position)])
+    for option in options:
+        keyboard.append([InlineKeyboardButton(option, callback_data=option)])
     return keyboard
 
 
@@ -396,12 +409,12 @@ def select_position_class(update: Update, context: CallbackContext) -> int:
     # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
     if query.data == "1":
         logger.debug("Raati")
-        keyboard = InlineKeyboardMarkup(generate_positions(BOARD))
+        keyboard = InlineKeyboardMarkup(generate_keyboard(BOARD))
         query.edit_message_reply_markup(keyboard)
         return SELECTING_POSITION
     elif query.data == "2":
         logger.debug("Toimihenkilö")
-        keyboard = InlineKeyboardMarkup(generate_positions(OFFICIALS))
+        keyboard = InlineKeyboardMarkup(generate_keyboard(ELECTED_OFFICIALS))
         query.edit_message_reply_markup(keyboard)
         return SELECTING_POSITION
     else:
@@ -411,7 +424,7 @@ def select_position_class(update: Update, context: CallbackContext) -> int:
 def select_board_position(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
-    keyboard = InlineKeyboardMarkup(generate_positions(BOARD))
+    keyboard = InlineKeyboardMarkup(generate_keyboard(BOARD))
     query.edit_message_reply_markup(keyboard)
     return SELECTING_POSITION
 
@@ -419,7 +432,7 @@ def select_board_position(update: Update, context: CallbackContext) -> int:
 def select_official_position(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
-    keyboard = InlineKeyboardMarkup(generate_positions(OFFICIALS))
+    keyboard = InlineKeyboardMarkup(generate_keyboard(ELECTED_OFFICIALS))
     query.edit_message_reply_markup(keyboard)
     return SELECTING_POSITION
 
@@ -494,94 +507,79 @@ def hae(update: Update, context: CallbackContext) -> int:
     return SELECTING_LANGUAGE
 
 
-def apply_elected_or_non_elected(update: Update, context: CallbackContext) -> int:
+def select_language(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     chat_data = context.chat_data
     query.answer()
-    if query.data == "fi":
-        chat_data["new_applicant_language"] = "fi"
-        query.edit_message_text(
-            text="Haetko vaaleilla valittavaan virkaan?",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [InlineKeyboardButton("Kyllä", callback_data="elected")],
-                    [InlineKeyboardButton("En", callback_data="non_elected")],
-                ]
-            ),
-        )
+    chat_data["is_finnish"] = query.data == "fi"
+    keyboard = InlineKeyboardMarkup(generate_keyboard(DIVISIONS))
+    text = (
+        "Minkä jaoksen virkaan haet?"
+        if chat_data["is_finnish"]
+        else "For which division are you applying?"
+    )
+    query.edit_message_text(
+        text=text,
+    )
+    query.edit_message_reply_markup(keyboard)
+    return SELECTING_DIVISION
+
+
+def get_positions(division):
+    if division == "Tapahtumajaos":
+        return EVENT
+    elif division == "Hyvinvointijaos":
+        return WELFARE
+    elif division == "Infojaos":
+        return INFORMATION
+    elif division == "Ulkojaos":
+        return FOREIGN
+    elif division == "Yrityssuhdejaos":
+        return CORPORATE
+    elif division == "Opintojaos":
+        return ACADEMIC
+    elif division == "Fuksijaos":
+        return FUKSI
+    elif division == "Muut toimihenkilöt":
+        return OTHER
     else:
-        chat_data["new_applicant_language"] = "en"
-        query.edit_message_text(
-            text="Are you applying to an elected position?",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [InlineKeyboardButton("Yes", callback_data="elected")],
-                    [InlineKeyboardButton("No", callback_data="non_elected")],
-                ]
-            ),
-        )
-
-    return APPLYING_TO_ELECTED_OR_NON_ELECTED
+        return []
 
 
-def apply_elected_position(update: Update, context: CallbackContext) -> int:
+def select_division(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     chat_data = context.chat_data
     query.answer()
-    keyboard = InlineKeyboardMarkup(generate_positions(BOARD + OFFICIALS))
+    division_positions = get_positions(query.data)
+    keyboard = InlineKeyboardMarkup(generate_keyboard(division_positions))
     text = (
         "Mihin rooliin haet?"
-        if chat_data["new_applicant_language"] == "fi"
+        if chat_data["is_finnish"]
         else "What position are you applying to?"
     )
     query.edit_message_text(
         text=text,
     )
     query.edit_message_reply_markup(keyboard)
-    return SELECTING_ELECTED_POSITION
+    return SELECTING_ROLE
 
 
-def apply_non_elected_position(update: Update, context: CallbackContext) -> int:
+def select_role(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     chat_data = context.chat_data
     query.answer()
-    text = (
-        "Mihin rooliin haet?"
-        if chat_data["new_applicant_language"] == "fi"
-        else "What position are you applying to?"
-    )
-    query.edit_message_text(
-        text=text,
-    )
-    return SELECTING_NON_ELECTED_POSITION
-
-
-def select_elected(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    chat_data = context.chat_data
-    query.answer()
-    text = (
-        f"Haet rooliin: {query.data}. Mikä on nimesi?"
-        if chat_data["new_applicant_language"] == "fi"
-        else f"You are applying to: {query.data}. What is your name?"
-    )
-    query.edit_message_text(
-        text=text,
-    )
     chat_data["new_applicant_position"] = query.data
-    return GIVING_NAME
-
-
-def select_non_elected(update: Update, context: CallbackContext) -> int:
-    chat_data = context.chat_data
-    position = update.message.text
-    chat_data["new_applicant_position"] = position
+    chat_data["is_elected"] = query.data in ELECTED_OFFICIALS + BOARD
+    elected_role_text = "vaaleilla valittavaan" if chat_data["is_elected"] else ""
+    elected_role_text_en = "elected" if chat_data["is_elected"] else ""
     text = (
-        "Mikä on nimesi?"
-        if chat_data["new_applicant_language"] == "fi"
-        else "What is your name?"
+        f"Haet {elected_role_text} rooliin: {query.data}. Mikä on nimesi?"
+        if chat_data["is_finnish"]
+        else f"You are applying to the {elected_role_text_en} role: {query.data}. What is your name?"
     )
-    update.message.reply_text(text)
+    query.edit_message_text(
+        text=text,
+    )
     return GIVING_NAME
 
 
@@ -591,7 +589,7 @@ def enter_name(update: Update, context: CallbackContext) -> int:
     chat_data["new_applicant_name"] = name
     text = (
         "Mikä on sähköpostiosoitteesi?"
-        if chat_data["new_applicant_language"] == "fi"
+        if chat_data["is_finnish"]
         else "What is your email address?"
     )
     update.message.reply_text(text)
@@ -604,7 +602,7 @@ def enter_email(update: Update, context: CallbackContext) -> int:
     chat_data["new_applicant_email"] = email
     text = (
         "Mikä on Telegram-käyttäjänimesi?"
-        if chat_data["new_applicant_language"] == "fi"
+        if chat_data["is_finnish"]
         else "What is your Telegram username?"
     )
     update.message.reply_text(text)
@@ -616,7 +614,8 @@ def enter_telegram(update: Update, context: CallbackContext) -> int:
     telegram = update.message.text
     chat_data["new_applicant_telegram"] = telegram
 
-    is_finnish = chat_data["new_applicant_language"] == "fi"
+    elected_text = "(Vaalilakanabot ilmoittaa tästä hakemuksesta kanaville)"
+    elected_text_en = "(Vaalilakanabot will announce this application to the channels)"
 
     text = (
         (
@@ -625,20 +624,20 @@ def enter_telegram(update: Update, context: CallbackContext) -> int:
             f"<b>Nimi</b>: {chat_data['new_applicant_name']}\n"
             f"<b>Sähköposti</b>: {chat_data['new_applicant_email']}\n"
             f"<b>Telegram</b>: {chat_data['new_applicant_telegram']}\n\n"
-            f"Haluatko lähettää hakemuksen?"
+            f"Haluatko lähettää hakemuksen {elected_text}?"
         )
-        if is_finnish
+        if chat_data["is_finnish"]
         else (
             f"Your application details: \n"
             f"<b>Position</b>: {chat_data['new_applicant_position']}\n"
             f"<b>Name</b>: {chat_data['new_applicant_name']}\n"
             f"<b>Email</b>: {chat_data['new_applicant_email']}\n"
             f"<b>Telegram</b>: {chat_data['new_applicant_telegram']}\n\n"
-            f"Do you want to send the application?"
+            f"Do you want to send the application {elected_text_en}?"
         )
     )
-    text_yes = "Kyllä" if is_finnish else "Yes"
-    text_no = "En" if is_finnish else "No"
+    text_yes = "Kyllä" if chat_data["is_finnish"] else "Yes"
+    text_no = "En" if chat_data["is_finnish"] else "No"
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -656,8 +655,6 @@ def confirm_application(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     chat_data = context.chat_data
 
-    is_finnish = chat_data["new_applicant_language"] == "fi"
-
     query.answer()
     try:
         if query.data == "yes":
@@ -668,7 +665,7 @@ def confirm_application(update: Update, context: CallbackContext) -> int:
                 "valittu": False,
             }
 
-            if chat_data["new_applicant_position"] in BOARD + OFFICIALS:
+            if chat_data["new_applicant_position"] in BOARD + ELECTED_OFFICIALS:
                 if chat_data["new_applicant_position"] not in vaalilakana:
                     vaalilakana[chat_data["new_applicant_position"]] = []
                 vaalilakana[chat_data["new_applicant_position"]].append(new_applicant)
@@ -683,7 +680,7 @@ def confirm_application(update: Update, context: CallbackContext) -> int:
 
             text = (
                 "Hakemuksesi on vastaanotettu. Kiitos!"
-                if is_finnish
+                if chat_data["is_finnish"]
                 else "Your application has been received. Thank you!"
             )
             query.edit_message_text(text)
@@ -691,7 +688,7 @@ def confirm_application(update: Update, context: CallbackContext) -> int:
         else:
             text = (
                 "Hakemuksesi on peruttu."
-                if is_finnish
+                if chat_data["is_finnish"]
                 else "Your application has been cancelled."
             )
             query.edit_message_text(text)
@@ -726,7 +723,7 @@ def unassociate_fiirumi(update, context):
                 )
                 return
 
-            if role not in BOARD and role not in OFFICIALS:
+            if role not in BOARD and role not in ELECTED_OFFICIALS:
                 updater.bot.send_message(
                     chat_id, "Virheelliset parametrit, roolia ei löytynyt"
                 )
@@ -774,7 +771,7 @@ def add_selected_tag(update, context):
                 )
                 raise ValueError from e
 
-            if position not in BOARD and position not in OFFICIALS:
+            if position not in BOARD and position not in ELECTED_OFFICIALS:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
@@ -947,16 +944,12 @@ def main():
     apply_handler = ConversationHandler(
         entry_points=[CommandHandler("hae", hae, Filters.chat_type.private)],
         states={
-            SELECTING_LANGUAGE: [CallbackQueryHandler(apply_elected_or_non_elected)],
-            APPLYING_TO_ELECTED_OR_NON_ELECTED: [
-                CallbackQueryHandler(apply_elected_position, pattern="^elected$"),
-                CallbackQueryHandler(
-                    apply_non_elected_position, pattern="^non_elected$"
-                ),
+            SELECTING_LANGUAGE: [CallbackQueryHandler(select_language)],
+            SELECTING_DIVISION: [
+                CallbackQueryHandler(select_division),
             ],
-            SELECTING_ELECTED_POSITION: [CallbackQueryHandler(select_elected)],
-            SELECTING_NON_ELECTED_POSITION: [
-                MessageHandler(Filters.text & (~Filters.command), select_non_elected),
+            SELECTING_ROLE: [
+                CallbackQueryHandler(select_role),
             ],
             GIVING_NAME: [
                 MessageHandler(Filters.text & (~Filters.command), enter_name)
