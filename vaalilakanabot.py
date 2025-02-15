@@ -77,27 +77,39 @@ creds = Credentials.from_service_account_file(
     scopes=["https://www.googleapis.com/auth/spreadsheets"],
 )
 
-with open("data/vaalilakana.json", "r") as f:
-    data = f.read()
-    vaalilakana = json.loads(data)
+try:
+    with open("data/vaalilakana.json", "r") as f:
+        data = f.read()
+        vaalilakana = json.loads(data)
+except FileNotFoundError:
+    vaalilakana = {}
 
 logger.info("Loaded vaalilakana: %s", vaalilakana)
 
-with open("data/channels.json", "r") as f:
-    data = f.read()
-    channels = json.loads(data)
+try:
+    with open("data/channels.json", "r") as f:
+        data = f.read()
+        channels = json.loads(data)
+except FileNotFoundError:
+    channels = []
 
 logger.info("Loaded channels: %s", channels)
 
-with open("data/fiirumi_posts.json", "r") as f:
-    data = f.read()
-    fiirumi_posts = json.loads(data)
+try:
+    with open("data/fiirumi_posts.json", "r") as f:
+        data = f.read()
+        fiirumi_posts = json.loads(data)
+except FileNotFoundError:
+    fiirumi_posts = {}
 
 logger.info("Loaded fiirumi posts: %s", fiirumi_posts)
 
-with open("data/question_posts.json", "r") as f:
-    data = f.read()
-    question_posts = json.loads(data)
+try:
+    with open("data/question_posts.json", "r") as f:
+        data = f.read()
+        question_posts = json.loads(data)
+except FileNotFoundError:
+    question_posts = {}
 
 logger.info("Loaded question posts: %s", question_posts)
 
@@ -105,7 +117,7 @@ updater = Updater(TOKEN, use_context=True)
 
 
 def _save_data(filename, content):
-    with open(filename, "w") as fp:
+    with open(filename, "w+") as fp:
         fp.write(json.dumps(content))
 
 
