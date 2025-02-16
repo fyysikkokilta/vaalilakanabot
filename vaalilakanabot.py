@@ -285,7 +285,17 @@ def remove_applicant(update, context):
                 )
                 raise ValueError("Invalid parameters") from e
 
-            if position not in BOARD and position not in ELECTED_OFFICIALS:
+            if (
+                position
+                not in EVENT
+                + WELFARE
+                + INFORMATION
+                + FOREIGN
+                + CORPORATE
+                + ACADEMIC
+                + FUKSI
+                + OTHER
+            ):
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
@@ -532,8 +542,8 @@ def select_language(update: Update, context: CallbackContext) -> int:
     )
     query.edit_message_text(
         text=text,
+        reply_markup=keyboard,
     )
-    query.edit_message_reply_markup(keyboard)
     return SELECTING_DIVISION
 
 
@@ -571,8 +581,8 @@ def select_division(update: Update, context: CallbackContext) -> int:
     )
     query.edit_message_text(
         text=text,
+        reply_markup=keyboard,
     )
-    query.edit_message_reply_markup(keyboard)
     return SELECTING_ROLE
 
 
@@ -582,12 +592,12 @@ def select_role(update: Update, context: CallbackContext) -> int:
     query.answer()
     chat_data["new_applicant_position"] = query.data
     chat_data["is_elected"] = query.data in ELECTED_OFFICIALS + BOARD
-    elected_role_text = "vaaleilla valittavaan" if chat_data["is_elected"] else ""
-    elected_role_text_en = "elected" if chat_data["is_elected"] else ""
+    elected_role_text = "vaaleilla valittavaan " if chat_data["is_elected"] else ""
+    elected_role_text_en = "elected " if chat_data["is_elected"] else ""
     text = (
-        f"Haet {elected_role_text} rooliin: {query.data}. Mikä on nimesi?"
+        f"Haet {elected_role_text}rooliin: {query.data}. Mikä on nimesi?"
         if chat_data["is_finnish"]
-        else f"You are applying to the {elected_role_text_en} role: {query.data}. What is your name?"
+        else f"You are applying to the {elected_role_text_en}role: {query.data}. What is your name?"
     )
     query.edit_message_text(
         text=text,
@@ -626,8 +636,16 @@ def enter_telegram(update: Update, context: CallbackContext) -> int:
     telegram = update.message.text
     chat_data["new_applicant_telegram"] = telegram
 
-    elected_text = "(Vaalilakanabot ilmoittaa tästä hakemuksesta kanaville)"
-    elected_text_en = "(Vaalilakanabot will announce this application to the channels)"
+    elected_text = (
+        " (Vaalilakanabot ilmoittaa tästä hakemuksesta kanaville)"
+        if chat_data["is_elected"]
+        else ""
+    )
+    elected_text_en = (
+        " (Vaalilakanabot will announce this application to the channels)"
+        if chat_data["is_elected"]
+        else ""
+    )
 
     text = (
         (
@@ -636,7 +654,7 @@ def enter_telegram(update: Update, context: CallbackContext) -> int:
             f"<b>Nimi</b>: {chat_data['new_applicant_name']}\n"
             f"<b>Sähköposti</b>: {chat_data['new_applicant_email']}\n"
             f"<b>Telegram</b>: {chat_data['new_applicant_telegram']}\n\n"
-            f"Haluatko lähettää hakemuksen {elected_text}?"
+            f"Haluatko lähettää hakemuksen{elected_text}?"
         )
         if chat_data["is_finnish"]
         else (
@@ -690,21 +708,34 @@ def confirm_application(update: Update, context: CallbackContext) -> int:
 
             _add_applicant_to_sheet(chat_data)
 
+            name = chat_data["new_applicant_name"]
+            position = chat_data["new_applicant_position"]
+            new_applicant = {
+                "name": name,
+                "position": position,
+                "fiirumi": "",
+                "valittu": False,
+            }
+
+            if position not in vaalilakana:
+                vaalilakana[position] = []
+
+            vaalilakana[position].append(new_applicant)
+            _save_data("data/vaalilakana.json", vaalilakana)
+
             text = (
                 "Hakemuksesi on vastaanotettu. Kiitos!"
                 if chat_data["is_finnish"]
                 else "Your application has been received. Thank you!"
             )
-            query.edit_message_text(text)
-            query.edit_message_reply_markup(None)
+            query.edit_message_text(text, reply_markup=None)
         else:
             text = (
                 "Hakemuksesi on peruttu."
                 if chat_data["is_finnish"]
                 else "Your application has been cancelled."
             )
-            query.edit_message_text(text)
-            query.edit_message_reply_markup(None)
+            query.edit_message_text(text, reply_markup=None)
 
     except Exception as e:
         # TODO: Return to role selection
@@ -783,7 +814,17 @@ def add_selected_tag(update, context):
                 )
                 raise ValueError from e
 
-            if position not in BOARD and position not in ELECTED_OFFICIALS:
+            if (
+                position
+                not in EVENT
+                + WELFARE
+                + INFORMATION
+                + FOREIGN
+                + CORPORATE
+                + ACADEMIC
+                + FUKSI
+                + OTHER
+            ):
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
