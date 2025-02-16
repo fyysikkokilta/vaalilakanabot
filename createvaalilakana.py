@@ -1,6 +1,12 @@
 import re
 import json
 import os
+import requests
+
+API_KEY = os.environ["API_KEY"]
+API_USERNAME = os.environ["API_USERNAME"]
+
+VAALILAKANA_POST_URL = os.environ["VAALILAKANA_POST_URL"]
 
 
 def format_election_sheet(text):
@@ -53,3 +59,29 @@ def format_election_sheet(text):
         json.dump(divisions, f, indent=2, ensure_ascii=False)
 
     return divisions
+
+
+def create_vaalilakana():
+    headers = {
+        "Api-Key": API_KEY,
+        "Api-Username": API_USERNAME,
+    }
+
+    response = requests.get(
+        VAALILAKANA_POST_URL,
+        headers=headers,
+    )
+
+    body = response.json()
+    vaalilakana_html = body["cooked"]
+
+    # Remove HTML tags using regex
+    text = re.sub(r"<.*?>", "", vaalilakana_html)
+
+    # Replace multiple newlines with a single newline
+    text = re.sub(r"\n+", "\n", text).strip()
+
+    # Ensure proper spacing and formatting
+    text = text.replace("—", "").strip()
+
+    format_election_sheet(text)

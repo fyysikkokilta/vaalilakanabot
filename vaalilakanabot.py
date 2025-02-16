@@ -17,8 +17,8 @@ from telegram.ext import (
     CallbackQueryHandler,
 )
 
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
+from lakanaupdater import update_election_sheet
+from createvaalilakana import create_vaalilakana
 
 TOKEN = os.environ["VAALILAKANABOT_TOKEN"]
 ADMIN_CHAT_ID = os.environ["ADMIN_CHAT_ID"]
@@ -61,11 +61,6 @@ formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(messag
 fh.setFormatter(formatter)
 logger.addHandler(fh)
 
-creds = Credentials.from_service_account_file(
-    os.environ.get("GOOGLE_SERVICE_ACCOUNT_CREDS", "google_service_account_creds.json"),
-    scopes=["https://www.googleapis.com/auth/spreadsheets"],
-)
-
 try:
     with open("data/vaalilakana.json", "r") as f:
         data = f.read()
@@ -80,8 +75,7 @@ try:
             for division in vaalilakana.values()
         ]
 except FileNotFoundError:
-    # TODO: Fetch vaalilakana from Fiirumi and call create-vaalilakana.py
-    vaalilakana = {}
+    vaalilakana = create_vaalilakana()
     positions = [
         {"fi": role["title"], "en": role["title_en"]}
         for division in vaalilakana.values()
@@ -182,31 +176,6 @@ def _vaalilakana_to_string():
 
         output += "\n"
     return output
-
-
-def _add_applicant_to_sheet(applicant):
-    service = build("sheets", "v4", credentials=creds, cache_discovery=False)
-    sheet = service.spreadsheets()
-    sheet_id = os.environ["APPLICANT_SHEET_ID"]
-
-    timestamp = time.strftime("%d.%m.%Y klo %H:%M:%S")
-    name = applicant["name"]
-    position = applicant["position"]
-    email = applicant["email"]
-    telegram = applicant["telegram"]
-
-    body = {"values": [[timestamp, name, position, email, telegram]]}
-
-    (
-        sheet.values()
-        .append(
-            spreadsheetId=sheet_id,
-            range="A1:A",
-            valueInputOption="RAW",
-            body=body,
-        )
-        .execute()
-    )
 
 
 def parse_fiirumi_posts(context=updater.bot):
@@ -320,7 +289,7 @@ def remove_applicant(update, context):
 
             if not found:
                 updater.bot.send_message(
-                    chat_id, f"Hakijaa ei löydy {name}", parse_mode="HTML"
+                    chat_id, f"Hakijaa ei löydy: {name}", parse_mode="HTML"
                 )
                 raise ValueError(f"Applicant not found: {name}")
 
@@ -383,7 +352,7 @@ def add_fiirumi_to_applicant(update, context):
 
             if not found:
                 updater.bot.send_message(
-                    chat_id, f"Hakijaa ei löydy {name}", parse_mode="HTML"
+                    chat_id, f"Hakijaa ei löydy: {name}", parse_mode="HTML"
                 )
                 raise ValueError(f"Applicant not found: {name}")
 
@@ -721,8 +690,6 @@ def confirm_application(update: Update, context: CallbackContext) -> int:
                     f"<b>Uusi nimi vaalilakanassa!</b>\n{position}: <i>{name}</i>"
                 )
 
-            _add_applicant_to_sheet(chat_data)
-
             division = _find_division_for_position(position)
             vaalilakana[division]["roles"][position]["applicants"].append(new_applicant)
             _save_data("data/vaalilakana.json", vaalilakana)
@@ -836,7 +803,7 @@ def add_selected_tag(update, context):
 
             if not found:
                 updater.bot.send_message(
-                    chat_id, f"Hakijaa ei löydy {name}", parse_mode="HTML"
+                    chat_id, f"Hakijaa ei löydy: {name}", parse_mode="HTML"
                 )
                 raise ValueError(f"Applicant not found: {name}")
 
@@ -952,6 +919,7 @@ def cancel(update, context):
 def main():
     jq = updater.job_queue
     jq.run_repeating(parse_fiirumi_posts, interval=60, first=0, context=updater.bot)
+    jq.run_repeating(update_election_sheet, interval=1800, first=0, context=updater.bot)
 
     dp = updater.dispatcher
 
