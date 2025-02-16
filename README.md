@@ -16,9 +16,9 @@ Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista 
 - lisää botti relevantteihin keskusteluryhmiin
 
 ## Running the bot with Docker
-- create a Google Sheets file to store the received applications
+- create Discourse api keys to be used by the bot
 - create `bot.env` according to the example file `bot.env.example`
-- create a Google service account with Google Drive API (read-write) permissions. Add the credentials to a file named `google_service_account_creds.json`.
+- make sure the empty vaalilakana is already created when starting the bot so that the local json is populated
 - start the bot using provided `update-deployment.sh` script
 
 ## Komennot
@@ -35,8 +35,8 @@ Botti tukee seuraavia komentoja:
 Admin-chatissa seuraavat komennot ovat käytössä:
 - `/lisaa` Lisää ehdokkaan vaalilakanaan.
 - `/lisaa_fiirumi` Lisää ehdokkaan fiirumipostauksen vaalilakanaan.
-- `/poista` Poistaa ehdokkaan lakanasta.
-- `/valittu` Merkitsee vaalilakanassa ehdokkaan valituksi virkaan.
+- `/poista` Poistaa ehdokkaan lakanasta. (toimii myös ei-vaaleilla valittavaan virkoihin; hakijan voi siis poistaa botin kautta)
+- `/valittu` Merkitsee vaalilakanassa ehdokkaan valituksi virkaan. (toimii myös ei-vaaleilla valittavaan virkoihin)
 - `/tiedota` Julkaisee uuden merkinnän vaalilakanassa.
 
 ## Lisätietoa
