@@ -28,4 +28,4 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt && pip install pylint
       - name: Run pylint
-        run: pylint vaalilakanabot.py
+        run: pylint *.py
