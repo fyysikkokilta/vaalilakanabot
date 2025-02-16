@@ -919,7 +919,7 @@ def cancel(update, context):
 def main():
     jq = updater.job_queue
     jq.run_repeating(parse_fiirumi_posts, interval=60, first=0, context=updater.bot)
-    jq.run_repeating(update_election_sheet, interval=1800, first=0, context=updater.bot)
+    jq.run_repeating(update_election_sheet, interval=60, first=0, context=updater.bot)
 
     dp = updater.dispatcher
 
