@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import time
 
 import logging
@@ -30,19 +31,6 @@ QUESTION_LIST_URL = os.environ["QUESTION_LIST_URL"]
 BOARD = os.environ["BOARD"].split(",")
 ELECTED_OFFICIALS = os.environ["ELECTED_OFFICIALS"].split(",")
 
-# Divisions
-DIVISIONS = os.environ["DIVISIONS"].split(",")
-
-# Official positions
-EVENT = os.environ["EVENT"].split(",")
-WELFARE = os.environ["WELFARE"].split(",")
-INFORMATION = os.environ["INFORMATION"].split(",")
-FOREIGN = os.environ["FOREIGN"].split(",")
-CORPORATE = os.environ["CORPORATE"].split(",")
-ACADEMIC = os.environ["ACADEMIC"].split(",")
-FUKSI = os.environ["FUKSI"].split(",")
-OTHER = os.environ["OTHER"].split(",")
-
 SELECTING_POSITION_CLASS = "SELECTING_POSITION_CLASS"
 SELECTING_POSITION = "SELECTING_POSITION"
 TYPING_NAME = "TYPING_NAME"
@@ -57,6 +45,8 @@ CONFIRMING_APPLICATION = "CONFIRMING_APPLICATION"
 
 channels = []
 vaalilakana = {}
+positions = []
+divisions = []
 last_applicant = None
 fiirumi_posts = []
 question_posts = []
@@ -64,8 +54,7 @@ question_posts = []
 logger = logging.getLogger("vaalilakanabot")
 logger.setLevel(logging.INFO)
 
-log_path = os.path.join("logs", "vaalilakanabot.log")
-fh = logging.FileHandler(log_path)
+fh = logging.StreamHandler(sys.stdout)
 fh.setLevel(logging.INFO)
 
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -81,8 +70,27 @@ try:
     with open("data/vaalilakana.json", "r") as f:
         data = f.read()
         vaalilakana = json.loads(data)
+        positions = [
+            {"fi": role["title"], "en": role["title_en"]}
+            for division in vaalilakana.values()
+            for role in division["roles"].values()
+        ]
+        divisions = [
+            {"fi": division["division"], "en": division["division_en"]}
+            for division in vaalilakana.values()
+        ]
 except FileNotFoundError:
+    # TODO: Fetch vaalilakana from Fiirumi and call create-vaalilakana.py
     vaalilakana = {}
+    positions = [
+        {"fi": role["title"], "en": role["title_en"]}
+        for division in vaalilakana.values()
+        for role in division["roles"].values()
+    ]
+    divisions = [
+        {"fi": division["division"], "en": division["division_en"]}
+        for division in vaalilakana.values()
+    ]
 
 logger.info("Loaded vaalilakana: %s", vaalilakana)
 
@@ -121,13 +129,23 @@ def _save_data(filename, content):
         fp.write(json.dumps(content))
 
 
-def _vaalilakana_to_string(lakana):
+def _find_division_for_position(position):
+    for division in vaalilakana.values():
+        if position in division["roles"]:
+            return division["division"]
+
+    logger.warning(f"Position {position} not found in vaalilakana")
+    return None
+
+
+def _vaalilakana_to_string():
     output = ""
     output += "<b>---------------Raati---------------</b>\n"
     # Hardcoded to maintain order instead using dict keys
     for position in BOARD:
         output += f"<b>{position}:</b>\n"
-        applicants = lakana[position] if position in lakana else []
+        division = _find_division_for_position(position)
+        applicants = vaalilakana[division]["roles"][position]["applicants"]
         for applicant in applicants:
             link = applicant["fiirumi"]
             selected = applicant["valittu"]
@@ -146,7 +164,8 @@ def _vaalilakana_to_string(lakana):
     output += "<b>----------Toimihenkilöt----------</b>\n"
     for position in ELECTED_OFFICIALS:
         output += f"<b>{position}:</b>\n"
-        applicants = lakana[position] if position in lakana else []
+        division = _find_division_for_position(position)
+        applicants = vaalilakana[division]["roles"][position]["applicants"]
         for applicant in applicants:
             link = applicant["fiirumi"]
             selected = applicant["valittu"]
@@ -171,10 +190,10 @@ def _add_applicant_to_sheet(applicant):
     sheet_id = os.environ["APPLICANT_SHEET_ID"]
 
     timestamp = time.strftime("%d.%m.%Y klo %H:%M:%S")
-    name = applicant["new_applicant_name"]
-    position = applicant["new_applicant_position"]
-    email = applicant["new_applicant_email"]
-    telegram = applicant["new_applicant_telegram"]
+    name = applicant["name"]
+    position = applicant["position"]
+    email = applicant["email"]
+    telegram = applicant["telegram"]
 
     body = {"values": [[timestamp, name, position, email, telegram]]}
 
@@ -285,24 +304,15 @@ def remove_applicant(update, context):
                 )
                 raise ValueError("Invalid parameters") from e
 
-            if (
-                position
-                not in EVENT
-                + WELFARE
-                + INFORMATION
-                + FOREIGN
-                + CORPORATE
-                + ACADEMIC
-                + FUKSI
-                + OTHER
-            ):
+            if position not in [position["fi"] for position in positions]:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
                 raise ValueError(f"Unknown position {position}")
 
             found = None
-            applicants = vaalilakana[position] if position in vaalilakana else []
+            division = _find_division_for_position(position)
+            applicants = vaalilakana[division]["roles"][position]["applicants"]
             for applicant in applicants:
                 if name == applicant["name"]:
                     found = applicant
@@ -314,14 +324,14 @@ def remove_applicant(update, context):
                 )
                 raise ValueError(f"Applicant not found: {name}")
 
-            vaalilakana[position].remove(found)
+            vaalilakana[division]["roles"][position]["applicants"].remove(found)
             _save_data("data/vaalilakana.json", vaalilakana)
             global last_applicant
             last_applicant = None
 
             updater.bot.send_message(
                 chat_id,
-                "Poistettu:\n{position}: {name}".format(**found),
+                f"Poistettu:\n{position}: {name}",
                 parse_mode="HTML",
             )
     except Exception as e:
@@ -346,7 +356,7 @@ def add_fiirumi_to_applicant(update, context):
                 )
                 raise ValueError("Invalid parameters") from e
 
-            if position not in BOARD and position not in ELECTED_OFFICIALS:
+            if position not in BOARD + ELECTED_OFFICIALS:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
@@ -360,12 +370,13 @@ def add_fiirumi_to_applicant(update, context):
                 )
                 raise ValueError(f"Unknown thread {thread_id}")
 
-            found = None
+            found = False
 
-            applicants = vaalilakana[position] if position in vaalilakana else []
+            division = _find_division_for_position(position)
+            applicants = vaalilakana[division]["roles"][position]["applicants"]
             for applicant in applicants:
                 if name == applicant["name"]:
-                    found = applicant
+                    found = True
                     fiirumi = f'{BASE_URL}/t/{fiirumi_posts[thread_id]["slug"]}/{fiirumi_posts[thread_id]["id"]}'
                     applicant["fiirumi"] = fiirumi
                     break
@@ -377,14 +388,10 @@ def add_fiirumi_to_applicant(update, context):
                 raise ValueError(f"Applicant not found: {name}")
 
             _save_data("data/vaalilakana.json", vaalilakana)
-            global last_applicant
-            last_applicant = None
 
             updater.bot.send_message(
                 chat_id,
-                'Lisätty Fiirumi:\n{position}: <a href="{fiirumi}">{name}</a>'.format(
-                    fiirumi, **found
-                ),
+                f'Lisätty Fiirumi:\n{position}: <a href="{fiirumi}">{name}</a>',
                 parse_mode="HTML",
             )
     except Exception as e:
@@ -413,10 +420,19 @@ def add_applicant(update: Update, context: CallbackContext) -> None:
         return None
 
 
-def generate_keyboard(options):
+def generate_keyboard(options, callback_data=None):
     keyboard = []
     for option in options:
-        keyboard.append([InlineKeyboardButton(option, callback_data=option)])
+        if callback_data:
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        option, callback_data=callback_data[options.index(option)]
+                    )
+                ]
+            )
+        else:
+            keyboard.append([InlineKeyboardButton(option, callback_data=option)])
     return keyboard
 
 
@@ -470,7 +486,7 @@ def register_position(update: Update, context: CallbackContext) -> int:
     query.edit_message_text(
         text=f"Hakija rooliin: {query.data}\nKirjoita hakijan nimi vastauksena tähän viestiin"
     )
-    chat_data["new_applicant_position"] = query.data
+    chat_data["position"] = query.data
     return TYPING_NAME
 
 
@@ -482,29 +498,24 @@ def enter_applicant_name(update: Update, context: CallbackContext) -> int:
     logger.debug(name)
     try:
         chat_id = update.message.chat.id
-        position = chat_data["new_applicant_position"]
-        chat_data["new_applicant_name"] = name
+        position = chat_data["position"]
+        chat_data["name"] = name
 
         new_applicant = {
             "name": name,
-            "position": position,
             "fiirumi": "",
             "valittu": False,
         }
 
-        if position not in vaalilakana:
-            vaalilakana[position] = []
-
-        vaalilakana[position].append(new_applicant)
+        division = _find_division_for_position(position)
+        vaalilakana[division]["roles"][position]["applicants"].append(new_applicant)
         _save_data("data/vaalilakana.json", vaalilakana)
         global last_applicant
-        last_applicant = new_applicant
+        last_applicant = {"position": position, "name": name}
 
         updater.bot.send_message(
             chat_id,
-            "Lisätty:\n{position}: {name}.\n\nLähetä tiedote komennolla /tiedota".format(
-                **new_applicant
-            ),
+            f"Lisätty:\n{position}: {name}.\n\nLähetä tiedote komennolla /tiedota",
             parse_mode="HTML",
         )
     except Exception as e:
@@ -529,12 +540,22 @@ def hae(update: Update, context: CallbackContext) -> int:
     return SELECTING_LANGUAGE
 
 
+def get_divisions(is_finnish=True):
+    return (
+        [division["fi"] if is_finnish else division["en"] for division in divisions],
+        [division["fi"] for division in divisions],
+    )
+
+
 def select_language(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     chat_data = context.chat_data
     query.answer()
     chat_data["is_finnish"] = query.data == "fi"
-    keyboard = InlineKeyboardMarkup(generate_keyboard(DIVISIONS))
+    localized_divisions, callback_data = get_divisions(chat_data["is_finnish"])
+    keyboard = InlineKeyboardMarkup(
+        generate_keyboard(localized_divisions, callback_data)
+    )
     text = (
         "Minkä jaoksen virkaan haet?"
         if chat_data["is_finnish"]
@@ -547,33 +568,27 @@ def select_language(update: Update, context: CallbackContext) -> int:
     return SELECTING_DIVISION
 
 
-def get_positions(division):
-    if division == "Tapahtumajaos":
-        return EVENT
-    elif division == "Hyvinvointijaos":
-        return WELFARE
-    elif division == "Infojaos":
-        return INFORMATION
-    elif division == "Ulkojaos":
-        return FOREIGN
-    elif division == "Yrityssuhdejaos":
-        return CORPORATE
-    elif division == "Opintojaos":
-        return ACADEMIC
-    elif division == "Fuksijaos":
-        return FUKSI
-    elif division == "Muut toimihenkilöt":
-        return OTHER
-    else:
-        return []
+def get_positions(division, is_finnish=True):
+    return (
+        [
+            role["title"] if is_finnish else role["title_en"]
+            for role in vaalilakana[division]["roles"].values()
+        ],
+        [role["title"] for role in vaalilakana[division]["roles"].values()],
+    )
 
 
 def select_division(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     chat_data = context.chat_data
     query.answer()
-    division_positions = get_positions(query.data)
-    keyboard = InlineKeyboardMarkup(generate_keyboard(division_positions))
+    chat_data["division"] = query.data
+    localized_positions, callback_data = get_positions(
+        query.data, chat_data["is_finnish"]
+    )
+    keyboard = InlineKeyboardMarkup(
+        generate_keyboard(localized_positions, callback_data)
+    )
     text = (
         "Mihin rooliin haet?"
         if chat_data["is_finnish"]
@@ -590,14 +605,19 @@ def select_role(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     chat_data = context.chat_data
     query.answer()
-    chat_data["new_applicant_position"] = query.data
-    chat_data["is_elected"] = query.data in ELECTED_OFFICIALS + BOARD
+    chat_data["position"] = query.data
+    chat_data["loc_position"] = (
+        chat_data["position"]
+        if chat_data["is_finnish"]
+        else vaalilakana[chat_data["division"]]["roles"][query.data]["title_en"]
+    )
+    chat_data["is_elected"] = chat_data["position"] in ELECTED_OFFICIALS + BOARD
     elected_role_text = "vaaleilla valittavaan " if chat_data["is_elected"] else ""
     elected_role_text_en = "elected " if chat_data["is_elected"] else ""
     text = (
-        f"Haet {elected_role_text}rooliin: {query.data}. Mikä on nimesi?"
+        f"Haet {elected_role_text}rooliin: {chat_data['loc_position']}. Mikä on nimesi?"
         if chat_data["is_finnish"]
-        else f"You are applying to the {elected_role_text_en}role: {query.data}. What is your name?"
+        else f"You are applying to the {elected_role_text_en}role: {chat_data['loc_position']}. What is your name?"
     )
     query.edit_message_text(
         text=text,
@@ -608,7 +628,7 @@ def select_role(update: Update, context: CallbackContext) -> int:
 def enter_name(update: Update, context: CallbackContext) -> int:
     chat_data = context.chat_data
     name = update.message.text
-    chat_data["new_applicant_name"] = name
+    chat_data["name"] = name
     text = (
         "Mikä on sähköpostiosoitteesi?"
         if chat_data["is_finnish"]
@@ -621,7 +641,7 @@ def enter_name(update: Update, context: CallbackContext) -> int:
 def enter_email(update: Update, context: CallbackContext) -> int:
     chat_data = context.chat_data
     email = update.message.text
-    chat_data["new_applicant_email"] = email
+    chat_data["email"] = email
     text = (
         "Mikä on Telegram-käyttäjänimesi?"
         if chat_data["is_finnish"]
@@ -634,7 +654,7 @@ def enter_email(update: Update, context: CallbackContext) -> int:
 def enter_telegram(update: Update, context: CallbackContext) -> int:
     chat_data = context.chat_data
     telegram = update.message.text
-    chat_data["new_applicant_telegram"] = telegram
+    chat_data["telegram"] = telegram
 
     elected_text = (
         " (Vaalilakanabot ilmoittaa tästä hakemuksesta kanaville)"
@@ -650,19 +670,19 @@ def enter_telegram(update: Update, context: CallbackContext) -> int:
     text = (
         (
             f"Hakemuksesi tiedot: \n"
-            f"<b>Haettava rooli</b>: {chat_data['new_applicant_position']}\n"
-            f"<b>Nimi</b>: {chat_data['new_applicant_name']}\n"
-            f"<b>Sähköposti</b>: {chat_data['new_applicant_email']}\n"
-            f"<b>Telegram</b>: {chat_data['new_applicant_telegram']}\n\n"
+            f"<b>Haettava rooli</b>: {chat_data['loc_position']}\n"
+            f"<b>Nimi</b>: {chat_data['name']}\n"
+            f"<b>Sähköposti</b>: {chat_data['email']}\n"
+            f"<b>Telegram</b>: {chat_data['telegram']}\n\n"
             f"Haluatko lähettää hakemuksen{elected_text}?"
         )
         if chat_data["is_finnish"]
         else (
             f"Your application details: \n"
-            f"<b>Position</b>: {chat_data['new_applicant_position']}\n"
-            f"<b>Name</b>: {chat_data['new_applicant_name']}\n"
-            f"<b>Email</b>: {chat_data['new_applicant_email']}\n"
-            f"<b>Telegram</b>: {chat_data['new_applicant_telegram']}\n\n"
+            f"<b>Position</b>: {chat_data['loc_position']}\n"
+            f"<b>Name</b>: {chat_data['name']}\n"
+            f"<b>Email</b>: {chat_data['email']}\n"
+            f"<b>Telegram</b>: {chat_data['telegram']}\n\n"
             f"Do you want to send the application {elected_text_en}?"
         )
     )
@@ -688,39 +708,23 @@ def confirm_application(update: Update, context: CallbackContext) -> int:
     query.answer()
     try:
         if query.data == "yes":
+            name = chat_data["name"]
+            position = chat_data["position"]
             new_applicant = {
-                "name": chat_data["new_applicant_name"],
-                "position": chat_data["new_applicant_position"],
+                "name": name,
                 "fiirumi": "",
                 "valittu": False,
             }
 
-            if chat_data["new_applicant_position"] in BOARD + ELECTED_OFFICIALS:
-                if chat_data["new_applicant_position"] not in vaalilakana:
-                    vaalilakana[chat_data["new_applicant_position"]] = []
-                vaalilakana[chat_data["new_applicant_position"]].append(new_applicant)
-                _save_data("data/vaalilakana.json", vaalilakana)
+            if position in BOARD + ELECTED_OFFICIALS:
                 _announce_to_channels(
-                    "<b>Uusi nimi vaalilakanassa!</b>\n{position}: <i>{name}</i>".format(
-                        **new_applicant
-                    )
+                    f"<b>Uusi nimi vaalilakanassa!</b>\n{position}: <i>{name}</i>"
                 )
 
             _add_applicant_to_sheet(chat_data)
 
-            name = chat_data["new_applicant_name"]
-            position = chat_data["new_applicant_position"]
-            new_applicant = {
-                "name": name,
-                "position": position,
-                "fiirumi": "",
-                "valittu": False,
-            }
-
-            if position not in vaalilakana:
-                vaalilakana[position] = []
-
-            vaalilakana[position].append(new_applicant)
+            division = _find_division_for_position(position)
+            vaalilakana[division]["roles"][position]["applicants"].append(new_applicant)
             _save_data("data/vaalilakana.json", vaalilakana)
 
             text = (
@@ -758,7 +762,7 @@ def unassociate_fiirumi(update, context):
             ]
             # Try find role
             try:
-                role, applicant = params
+                position, applicant = params
             except Exception as e:
                 logger.error(e)
                 updater.bot.send_message(
@@ -766,14 +770,15 @@ def unassociate_fiirumi(update, context):
                 )
                 return
 
-            if role not in BOARD and role not in ELECTED_OFFICIALS:
+            if position not in BOARD + ELECTED_OFFICIALS:
                 updater.bot.send_message(
                     chat_id, "Virheelliset parametrit, roolia ei löytynyt"
                 )
                 return
 
             # Try finding the dict with matching applicant name from vaalilakana
-            applicants = vaalilakana[role] if role in vaalilakana else []
+            division = _find_division_for_position(position)
+            applicants = vaalilakana[division]["roles"][position]["applicants"]
             for applicant in applicants:
                 if applicant["name"] == applicant:
                     applicant["fiirumi"] = ""
@@ -814,27 +819,18 @@ def add_selected_tag(update, context):
                 )
                 raise ValueError from e
 
-            if (
-                position
-                not in EVENT
-                + WELFARE
-                + INFORMATION
-                + FOREIGN
-                + CORPORATE
-                + ACADEMIC
-                + FUKSI
-                + OTHER
-            ):
+            if position not in [position["fi"] for position in positions]:
                 updater.bot.send_message(
                     chat_id, f"Tunnistamaton virka: {position}", parse_mode="HTML"
                 )
                 raise ValueError(f"Unknown position {position}")
 
-            found = None
-            applicants = vaalilakana[position] if position in vaalilakana else []
+            found = False
+            division = _find_division_for_position(position)
+            applicants = vaalilakana[division]["roles"][position]["applicants"]
             for applicant in applicants:
                 if name == applicant["name"]:
-                    found = applicant
+                    found = True
                     applicant["valittu"] = True
                     break
 
@@ -845,12 +841,10 @@ def add_selected_tag(update, context):
                 raise ValueError(f"Applicant not found: {name}")
 
             _save_data("data/vaalilakana.json", vaalilakana)
-            global last_applicant
-            last_applicant = None
 
             updater.bot.send_message(
                 chat_id,
-                "Hakija valittu:\n{position}: {name}".format(**found),
+                f"Hakija valittu:\n{position}: {name}",
                 parse_mode="HTML",
             )
     except Exception as e:
@@ -862,7 +856,7 @@ def show_vaalilakana(update, context):
         chat_id = update.message.chat.id
         updater.bot.send_message(
             chat_id,
-            _vaalilakana_to_string(vaalilakana),
+            _vaalilakana_to_string(),
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
@@ -890,10 +884,10 @@ def announce_new_applicant(update, context):
         if str(chat_id) == str(ADMIN_CHAT_ID):
             global last_applicant
             if last_applicant:
+                position = last_applicant["position"]
+                name = last_applicant["name"]
                 _announce_to_channels(
-                    "<b>Uusi nimi vaalilakanassa!</b>\n{position}: <i>{name}</i>".format(
-                        **last_applicant
-                    )
+                    f"<b>Uusi nimi vaalilakanassa!</b>\n{position}: <i>{name}</i>"
                 )
             last_applicant = None
     except Exception as e:

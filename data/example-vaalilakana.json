@@ -1,0 +1,533 @@
+{
+  "MUUT TOIMIHENKILÖT": {
+    "division": "MUUT TOIMIHENKILÖT",
+    "division_en": "OTHER OFFICIALS",
+    "roles": {
+      "Puheenjohtaja": {
+        "title": "Puheenjohtaja",
+        "title_en": "President",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Varapuheenjohtaja": {
+        "title": "Varapuheenjohtaja",
+        "title_en": "Vice President",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Rahastonhoitaja": {
+        "title": "Rahastonhoitaja",
+        "title_en": "Treasurer",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Toiminnantarkastaja": {
+        "title": "Toiminnantarkastaja",
+        "title_en": "Auditor",
+        "amount": "2",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Sijoitusvastaava": {
+        "title": "Sijoitusvastaava",
+        "title_en": "Sijoitusvastaava",
+        "amount": "1-2",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Häirintäyhdyshenkilö": {
+        "title": "Häirintäyhdyshenkilö",
+        "title_en": "Harassment contact person",
+        "amount": "4",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "QT-vastaava": {
+        "title": "QT-vastaava",
+        "title_en": "QT-coordinator",
+        "amount": "1-2",
+        "application_dl": "3.11.",
+        "applicants": []
+      },
+      "QT-toimari": {
+        "title": "QT-toimari",
+        "title_en": "QT-official",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Jatkuvuustoimikunnan puheenjohtaja": {
+        "title": "Jatkuvuustoimikunnan puheenjohtaja",
+        "title_en": "President of the continuity committee",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Jatkuvuustoimikunnan jäsen": {
+        "title": "Jatkuvuustoimikunnan jäsen",
+        "title_en": "Members of the continuity committee",
+        "amount": "11",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Ansiomerkkivastaava": {
+        "title": "Ansiomerkkivastaava",
+        "title_en": "Award responsible",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Ansiomerkkitoimari": {
+        "title": "Ansiomerkkitoimari",
+        "title_en": "Member of award committee",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Killan edustaja Teekkarikokouksessa": {
+        "title": "Killan edustaja Teekkarikokouksessa",
+        "title_en": "Guild representative in Teekkari Assembly",
+        "amount": "2",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Killan varaedustaja Teekkarikokouksessa": {
+        "title": "Killan varaedustaja Teekkarikokouksessa",
+        "title_en": "Guild spare representative in Teekkari Assembly",
+        "amount": "2",
+        "application_dl": "None",
+        "applicants": []
+      }
+    }
+  },
+  "TAPAHTUMAJAOS": {
+    "division": "TAPAHTUMAJAOS",
+    "division_en": "EVENT DIVISION",
+    "roles": {
+      "IE": {
+        "title": "IE",
+        "title_en": "IE",
+        "amount": "2",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Lukkarimestari": {
+        "title": "Lukkarimestari",
+        "title_en": "Songmaster",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "DJ": {
+        "title": "DJ",
+        "title_en": "DJ",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "N-vastaava": {
+        "title": "N-vastaava",
+        "title_en": "N coordinator",
+        "amount": "1-2",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "N-toimikunta": {
+        "title": "N-toimikunta",
+        "title_en": "N-committee",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Hovimestari": {
+        "title": "Hovimestari",
+        "title_en": "Butler",
+        "amount": "n",
+        "application_dl": "10.11.",
+        "applicants": []
+      },
+      "Lukkari": {
+        "title": "Lukkari",
+        "title_en": "Songleader",
+        "amount": "n",
+        "application_dl": "10.11.",
+        "applicants": []
+      },
+      "Lukkarikisälli": {
+        "title": "Lukkarikisälli",
+        "title_en": "Songleader novice",
+        "amount": "n",
+        "application_dl": "10.11.",
+        "applicants": []
+      },
+      "Mahdollinen wappupäälikkö": {
+        "title": "Mahdollinen wappupäälikkö",
+        "title_en": "Possible wappuchief “MWP”",
+        "amount": "1-2",
+        "application_dl": "3.11.",
+        "applicants": []
+      },
+      "Wapputoimikunta": {
+        "title": "Wapputoimikunta",
+        "title_en": "Wappu committee",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Nikkari": {
+        "title": "Nikkari",
+        "title_en": "Tinkerer",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      }
+    }
+  },
+  "YRITYSSUHDEJAOS": {
+    "division": "YRITYSSUHDEJAOS",
+    "division_en": "CORPORATE RELATIONS DIVISION",
+    "roles": {
+      "Yrityssuhdevastaava": {
+        "title": "Yrityssuhdevastaava",
+        "title_en": "Master of Corporate Relations",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Excumestari": {
+        "title": "Excumestari",
+        "title_en": "Master of Excursions",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Excutoimari": {
+        "title": "Excutoimari",
+        "title_en": "Excursion team member",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Yrityssuhdetoimari": {
+        "title": "Yrityssuhdetoimari",
+        "title_en": "Corporate Relations team member",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      }
+    }
+  },
+  "OPINTOJAOS": {
+    "division": "OPINTOJAOS",
+    "division_en": "ACADEMIC AFFAIRS DIVISION",
+    "roles": {
+      "Opintovastaava": {
+        "title": "Opintovastaava",
+        "title_en": "Master of Academic Affairs",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Tutorpaimen": {
+        "title": "Tutorpaimen",
+        "title_en": "Study tutor coordinator",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Opintoadjutantti": {
+        "title": "Opintoadjutantti",
+        "title_en": "Academic Affairs Adjutant",
+        "amount": "13-15",
+        "application_dl": "29.11.",
+        "applicants": []
+      },
+      "QT-opintoadjutantti": {
+        "title": "QT-opintoadjutantti",
+        "title_en": "QT Academic Affairs Adjutant",
+        "amount": "2",
+        "application_dl": "29.11.",
+        "applicants": []
+      },
+      "Abivastaava": {
+        "title": "Abivastaava",
+        "title_en": "Student recruitment coordinator",
+        "amount": "1-2",
+        "application_dl": "3.11.",
+        "applicants": []
+      },
+      "Abitoimihenkilö": {
+        "title": "Abitoimihenkilö",
+        "title_en": "Student recruitment team member",
+        "amount": "n",
+        "application_dl": "10.11.",
+        "applicants": []
+      }
+    }
+  },
+  "FUKSIJAOS": {
+    "division": "FUKSIJAOS",
+    "division_en": "FUKSI DIVISION",
+    "roles": {
+      "Fuksikapteeni": {
+        "title": "Fuksikapteeni",
+        "title_en": "Fuksi Captain",
+        "amount": "2",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "ISOvastaava": {
+        "title": "ISOvastaava",
+        "title_en": "BIG Coordinator",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Fuksi Luke": {
+        "title": "Fuksi Luke",
+        "title_en": "Fuksi Luke",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Fuksi Leia": {
+        "title": "Fuksi Leia",
+        "title_en": "Fuksi Leia",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "ISO-Wan Kenobi": {
+        "title": "ISO-Wan Kenobi",
+        "title_en": "ISO-Wan Kenobi",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      }
+    }
+  },
+  "ULKOJAOS": {
+    "division": "ULKOJAOS",
+    "division_en": "FOREIGN RELATIONS DIVISION",
+    "roles": {
+      "Kv-vastaava": {
+        "title": "Kv-vastaava",
+        "title_en": "International Captain",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Ulkosuhdevastaava": {
+        "title": "Ulkosuhdevastaava",
+        "title_en": "External Relations Coordinator",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "[Ru)Han Solo": {
+        "title": "[Ru)Han Solo",
+        "title_en": "[Ru)Han Solo",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Ulkosuhdetoimari": {
+        "title": "Ulkosuhdetoimari",
+        "title_en": "Foreign relations official",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "TEK-yhdyshenkilö": {
+        "title": "TEK-yhdyshenkilö",
+        "title_en": "Guild contact person of TEK",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Alumniyhdyshenkilö": {
+        "title": "Alumniyhdyshenkilö",
+        "title_en": "Alumni coordinator",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      }
+    }
+  },
+  "HYVINVOINTIJAOS": {
+    "division": "HYVINVOINTIJAOS",
+    "division_en": "WELFARE DIVISION",
+    "roles": {
+      "Hupimestari": {
+        "title": "Hupimestari",
+        "title_en": "Master of Leisure",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "HOTHOTHOT": {
+        "title": "HOTHOTHOT",
+        "title_en": "HOTHOTHOT",
+        "amount": "None",
+        "application_dl": "3.11.",
+        "applicants": []
+      },
+      "Hupikisälli": {
+        "title": "Hupikisälli",
+        "title_en": "Apprentice of Leisure",
+        "amount": "n",
+        "application_dl": "10.11.",
+        "applicants": []
+      },
+      "Kiltisvastaava": {
+        "title": "Kiltisvastaava",
+        "title_en": "Guildroom coordinator",
+        "amount": "1-2",
+        "application_dl": "3.11.",
+        "applicants": []
+      },
+      "Kiltistoimari": {
+        "title": "Kiltistoimari",
+        "title_en": "Guildroom novice",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "ManManMan": {
+        "title": "ManManMan",
+        "title_en": "ManManMan",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Kondomori": {
+        "title": "Kondomori",
+        "title_en": "Kondomori",
+        "amount": "1-2",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Liikuntavastaava": {
+        "title": "Liikuntavastaava",
+        "title_en": "Sports coordinator",
+        "amount": "3-5",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Kohellusvastaava": {
+        "title": "Kohellusvastaava",
+        "title_en": "Kohellus coordinator",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Kulttuurivastaava": {
+        "title": "Kulttuurivastaava",
+        "title_en": "Culture coordinator",
+        "amount": "2-3",
+        "application_dl": "None",
+        "applicants": []
+      }
+    }
+  },
+  "INFOJAOS": {
+    "division": "INFOJAOS",
+    "division_en": "INFORMATION DIVISON",
+    "roles": {
+      "Viestintävastaava": {
+        "title": "Viestintävastaava",
+        "title_en": "Communications Officer",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Kvantin päätoimittaja": {
+        "title": "Kvantin päätoimittaja",
+        "title_en": "Editor-in-Chief of Kvantti",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Graafikko": {
+        "title": "Graafikko",
+        "title_en": "AD",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Arkistovastaava": {
+        "title": "Arkistovastaava",
+        "title_en": "Archivist",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Galleristi": {
+        "title": "Galleristi",
+        "title_en": "Gallerist",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Kääntäjä": {
+        "title": "Kääntäjä",
+        "title_en": "Translator",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Merkkihenkilö": {
+        "title": "Merkkihenkilö",
+        "title_en": "Badger",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Tech support": {
+        "title": "Tech support",
+        "title_en": "Tech support",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Social Media Influencer": {
+        "title": "Social Media Influencer",
+        "title_en": "Social Media Influencer",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Sometiimi": {
+        "title": "Sometiimi",
+        "title_en": "Social Media Team",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Valokuvaaja": {
+        "title": "Valokuvaaja",
+        "title_en": "Photographer",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Kiltatuotevastaava": {
+        "title": "Kiltatuotevastaava",
+        "title_en": "Guild Merch Responsible",
+        "amount": "None",
+        "application_dl": "None",
+        "applicants": []
+      },
+      "Kvantin toimittaja": {
+        "title": "Kvantin toimittaja",
+        "title_en": "Reporter of Kvantti",
+        "amount": "n",
+        "application_dl": "None",
+        "applicants": []
+      }
+    }
+  }
+}

@@ -1,10 +1,6 @@
 *.env
 google_service_account_creds.json
 
-# Exclude all but example logs
-logs/*
-!example*
-
 #Exclude all but example data
 data/*
 !example*
