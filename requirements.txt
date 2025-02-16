@@ -1,6 +1,2 @@
 python-telegram-bot==13.9
 requests
-lxml
-google-api-core
-google-api-python-client
-google-auth
