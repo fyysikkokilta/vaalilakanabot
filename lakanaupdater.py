@@ -1,7 +1,7 @@
+from datetime import datetime
 import json
 import os
 import requests
-from datetime import datetime
 
 API_KEY = os.environ["API_KEY"]
 API_USERNAME = os.environ["API_USERNAME"]
@@ -102,4 +102,5 @@ def update_election_sheet(context):
         VAALILAKANA_POST_URL,
         headers=headers,
         json=payload,
+        timeout=30,
     )

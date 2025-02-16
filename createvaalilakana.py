@@ -30,7 +30,10 @@ def format_election_sheet(text):
         # Check for roles (ignore if no active division exists)
         if current_division_name:
             match_role = re.match(
-                r"^(?P<title>[^\/(]+?)(?:\s*\/\s*(?P<title_en>[^(\d]+?))?(?:\s*\((?P<amount>[^\)]+)\))?(?:\s*(?P<application_dl>\d{1,2}\.\d{1,2}\.))?\s*$",
+                r"""^(?P<title>[^\/(]+?)"""
+                r"""(?:\s*\/\s*(?P<title_en>[^(\d]+?))?"""
+                r"""(?:\s*\((?P<amount>[^\)]+)\))?"""
+                r"""(?:\s*(?P<application_dl>\d{1,2}\.\d{1,2}\.))?\s*$""",
                 line,
             )
             if match_role:
@@ -70,6 +73,7 @@ def create_vaalilakana():
     response = requests.get(
         VAALILAKANA_POST_URL,
         headers=headers,
+        timeout=30,
     )
 
     body = response.json()
@@ -84,4 +88,4 @@ def create_vaalilakana():
     # Ensure proper spacing and formatting
     text = text.replace("—", "").strip()
 
-    format_election_sheet(text)
+    return format_election_sheet(text)

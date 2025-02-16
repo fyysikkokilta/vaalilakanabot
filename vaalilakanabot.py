@@ -128,7 +128,7 @@ def _find_division_for_position(position):
         if position in division["roles"]:
             return division["division"]
 
-    logger.warning(f"Position {position} not found in vaalilakana")
+    logger.warning("Position %s not found in vaalilakana", position)
     return None
 
 
