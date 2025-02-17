@@ -179,6 +179,8 @@ async def _announce_to_channels(message: str, context: ContextTypes.DEFAULT_TYPE
             time.sleep(0.5)
         except Exception as e:
             logger.error(e)
+            channels.remove(cid)
+            _save_data("data/channels.json", channels)
             continue
 
 
