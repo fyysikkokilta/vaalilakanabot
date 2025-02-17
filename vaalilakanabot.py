@@ -33,10 +33,6 @@ QUESTION_LIST_URL = os.environ["QUESTION_LIST_URL"]
 BOARD = os.environ["BOARD"].split(",")
 ELECTED_OFFICIALS = os.environ["ELECTED_OFFICIALS"].split(",")
 
-SELECTING_POSITION_CLASS = "SELECTING_POSITION_CLASS"
-SELECTING_POSITION = "SELECTING_POSITION"
-TYPING_NAME = "TYPING_NAME"
-
 SELECTING_LANGUAGE = "SELECTING_LANGUAGE"
 SELECTING_DIVISION = "SELECTING_DIVISION"
 SELECTING_ROLE = "SELECTING_ROLE"
@@ -48,7 +44,6 @@ channels = []
 vaalilakana = {}
 positions = []
 divisions = []
-last_applicant = None
 fiirumi_posts = []
 question_posts = []
 
@@ -308,8 +303,6 @@ async def remove_applicant(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             vaalilakana[division]["roles"][position]["applicants"].remove(found)
             _save_data("data/vaalilakana.json", vaalilakana)
-            global last_applicant
-            last_applicant = None
 
             await update.message.reply_text(f"Poistettu:\n{position}: {name}")
     except Exception as e:
