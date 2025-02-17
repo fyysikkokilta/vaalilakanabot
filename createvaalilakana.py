@@ -79,8 +79,12 @@ def create_vaalilakana():
     body = response.json()
     vaalilakana_html = body["cooked"]
 
+    # Remove applicants
+    # Applicant lines are marked with a <li> tag
+    text = re.sub(r"<li>.*?</li>", "", vaalilakana_html)
+
     # Remove HTML tags using regex
-    text = re.sub(r"<.*?>", "", vaalilakana_html)
+    text = re.sub(r"<.*?>", "", text)
 
     # Replace multiple newlines with a single newline
     text = re.sub(r"\n+", "\n", text).strip()
