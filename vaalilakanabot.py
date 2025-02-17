@@ -826,6 +826,42 @@ def add_selected_tag(update, context):
         logger.error(e)
 
 
+def announce_new_applicant(update, context):
+    try:
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+            global last_applicant
+            if last_applicant:
+                position = last_applicant["position"]
+                name = last_applicant["name"]
+                _announce_to_channels(
+                    f"<b>Uusi nimi vaalilakanassa!</b>\n{position}: <i>{name}</i>"
+                )
+            last_applicant = None
+    except Exception as e:
+        logger.error(e)
+
+
+def export_data(update, context):
+    # Create a csv with the name, role, email and telegram of all applicants
+    try:
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+            with open("data/applicants.csv", "w") as f:
+                f.write("Name,Role,Email,Telegram\n")
+                for division in vaalilakana.values():
+                    for role in division["roles"].values():
+                        for applicant in role["applicants"]:
+                            f.write(
+                                f"{applicant['name']},{role['title']},{applicant['email']},{applicant['telegram']}\n"
+                            )
+            updater.bot.send_document(
+                chat_id, document=open("data/applicants.csv", "rb")
+            )
+    except Exception as e:
+        logger.error(e)
+
+
 def show_vaalilakana(update, context):
     try:
         chat_id = update.message.chat.id
@@ -849,22 +885,6 @@ def register_channel(update, context):
             updater.bot.send_message(
                 chat_id, "Rekisteröity Vaalilakanabotin tiedotuskanavaksi!"
             )
-    except Exception as e:
-        logger.error(e)
-
-
-def announce_new_applicant(update, context):
-    try:
-        chat_id = update.message.chat.id
-        if str(chat_id) == str(ADMIN_CHAT_ID):
-            global last_applicant
-            if last_applicant:
-                position = last_applicant["position"]
-                name = last_applicant["name"]
-                _announce_to_channels(
-                    f"<b>Uusi nimi vaalilakanassa!</b>\n{position}: <i>{name}</i>"
-                )
-            last_applicant = None
     except Exception as e:
         logger.error(e)
 
@@ -935,9 +955,10 @@ def main():
     dp.add_handler(CommandHandler("lisaa_fiirumi", add_fiirumi_to_applicant))
     dp.add_handler(CommandHandler("poista_fiirumi", unassociate_fiirumi))
     dp.add_handler(CommandHandler("poista", remove_applicant))
-    dp.add_handler(CommandHandler("lakana", show_vaalilakana))
     dp.add_handler(CommandHandler("tiedota", announce_new_applicant))
+    dp.add_handler(CommandHandler("vie_tiedot", export_data))
     dp.add_handler(CommandHandler("start", register_channel))
+    dp.add_handler(CommandHandler("lakana", show_vaalilakana))
     dp.add_handler(CommandHandler("jauhis", jauhis))
     dp.add_handler(CommandHandler("jauh", jauh))
     dp.add_handler(CommandHandler("jauho", jauho))
