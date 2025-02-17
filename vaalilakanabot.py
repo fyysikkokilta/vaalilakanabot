@@ -814,6 +814,91 @@ async def announce_new_applicant(update: Update, context: ContextTypes.DEFAULT_T
         logger.error(e)
 
 
+async def edit_or_add_new_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+            text = update.message.text.replace("/muokkaa_roolia", "").strip()
+            params = text.split(",")
+
+            try:
+                division = params[0].strip()
+                role = params[1].strip()
+                role_en = params[2].strip() if params[2].strip() else None
+                amount = params[3].strip() if params[3].strip() else None
+                application_dl = params[4].strip() if params[4].strip() else None
+            except Exception as e:
+                await update.message.reply_text(
+                    "Virheelliset parametrit - "
+                    "/muokkaa_roolia <jaos>, <rooli>, <rooli_en>, <hakijamäärä>, <hakuaika>"
+                )
+                raise ValueError("Invalid parameters") from e
+
+            if division not in [division["fi"] for division in divisions]:
+                await update.message.reply_text(f"Tunnistamaton jaos: {division}")
+                raise ValueError(f"Unknown division {division}")
+
+            if role not in [
+                role["title"] for role in vaalilakana[division]["roles"].values()
+            ]:
+                vaalilakana[division]["roles"][role] = {
+                    "title": role,
+                    "title_en": role_en if role_en else role,
+                    "amount": amount,
+                    "application_dl": application_dl,
+                    "applicants": [],
+                }
+                positions.append({"fi": role, "en": role_en})
+                _save_data("data/vaalilakana.json", vaalilakana)
+                await update.message.reply_text(f"Lisätty:\n{division}: {role}")
+            else:
+                vaalilakana[division]["roles"][role] = {
+                    "title": role,
+                    "title_en": role_en if role_en else role,
+                    "amount": amount,
+                    "application_dl": application_dl,
+                    "applicants": vaalilakana[division]["roles"][role]["applicants"],
+                }
+                _save_data("data/vaalilakana.json", vaalilakana)
+                await update.message.reply_text(f"Päivitetty:\n{division}: {role}")
+    except Exception as e:
+        logger.error(e)
+
+
+async def remove_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+            text = update.message.text.replace("/poista_rooli", "").strip()
+            params = text.split(",")
+
+            try:
+                division = params[0].strip()
+                role = params[1].strip()
+            except Exception as e:
+                await update.message.reply_text(
+                    "Virheelliset parametrit - /poista_rooli <jaos>, <rooli>"
+                )
+                raise ValueError("Invalid parameters") from e
+
+            if division not in [division["fi"] for division in divisions]:
+                await update.message.reply_text(f"Tunnistamaton jaos: {division}")
+                raise ValueError(f"Unknown division {division}")
+
+            if role not in [
+                role["title"] for role in vaalilakana[division]["roles"].values()
+            ]:
+                await update.message.reply_text(f"Tunnistamaton rooli: {role}")
+                raise ValueError(f"Unknown role {role}")
+
+            del vaalilakana[division]["roles"][role]
+            positions.remove({"fi": role, "en": role})
+            _save_data("data/vaalilakana.json", vaalilakana)
+            await update.message.reply_text(f"Poistettu:\n{division}: {role}")
+    except Exception as e:
+        logger.error(e)
+
+
 async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Create a csv with the name, role, email and telegram of all applicants
     try:
@@ -921,6 +1006,8 @@ async def post_init(app: Application):
     app.add_handler(CommandHandler("poista_fiirumi", unassociate_fiirumi))
     app.add_handler(CommandHandler("poista", remove_applicant))
     app.add_handler(CommandHandler("tiedota", announce_new_applicant))
+    app.add_handler(CommandHandler("muokkaa_roolia", edit_or_add_new_role))
+    app.add_handler(CommandHandler("poista_rooli", remove_role))
     app.add_handler(CommandHandler("vie_tiedot", export_data))
     app.add_handler(CommandHandler("start", register_channel))
     app.add_handler(CommandHandler("lakana", show_vaalilakana))
