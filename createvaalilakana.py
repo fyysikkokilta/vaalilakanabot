@@ -30,11 +30,11 @@ def format_election_sheet(text):
         # Check for roles (ignore if no active division exists)
         if current_division_name:
             match_role = re.match(
-                r"""^(?P<title>[^\/(]+?)"""
-                r"""(?:\s*\/\s*(?P<title_en>[^(\d]+?))?"""
-                r"""(?:\s*\((?P<amount>[^\)]+)\))?"""
-                r"""(?:\s*(?P<application_dl>\d{1,2}\.\d{1,2}\.))?\s*$""",
-                line,
+                r"""^(?P<title>.+?)"""  # Match any characters (including numbers) for the title
+                r"""(?:\s*\/\s*(?P<title_en>.+?))?"""  # Match any characters (including numbers) for the English title
+                r"""(?:\s*\((?P<amount>[^\)]+)\))?"""  # Match the amount in parentheses
+                r"""(?:\s*(?P<application_dl>\d{1,2}\.\d{1,2}\.))?$""",  # Match the application deadline
+                line.strip(),
             )
             if match_role:
                 title = match_role.group(1).strip()
