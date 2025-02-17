@@ -40,7 +40,6 @@ SELECTING_DIVISION = "SELECTING_DIVISION"
 SELECTING_ROLE = "SELECTING_ROLE"
 GIVING_NAME = "GIVING_NAME"
 GIVING_EMAIL = "GIVING_EMAIL"
-GIVING_TELEGRAM = "GIVING_TELEGRAM"
 CONFIRMING_APPLICATION = "CONFIRMING_APPLICATION"
 
 channels = []
@@ -574,6 +573,22 @@ def select_role(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     chat_data = context.chat_data
     query.answer()
+
+    user_id = update.effective_user.id
+    if any(
+        applicant["user_id"] == user_id
+        for applicant in vaalilakana[chat_data["division"]]["roles"][query.data][
+            "applicants"
+        ]
+    ):
+        text = (
+            "Olet jo hakenut tähän rooliin!"
+            if chat_data["is_finnish"]
+            else "You have already applied to this position!"
+        )
+        query.edit_message_text(text)
+        return ConversationHandler.END
+
     chat_data["position"] = query.data
     chat_data["loc_position"] = (
         chat_data["position"]
@@ -611,19 +626,7 @@ def enter_email(update: Update, context: CallbackContext) -> int:
     chat_data = context.chat_data
     email = update.message.text
     chat_data["email"] = email
-    text = (
-        "Mikä on Telegram-käyttäjänimesi?"
-        if chat_data["is_finnish"]
-        else "What is your Telegram username?"
-    )
-    update.message.reply_text(text)
-    return GIVING_TELEGRAM
-
-
-def enter_telegram(update: Update, context: CallbackContext) -> int:
-    chat_data = context.chat_data
-    telegram = update.message.text
-    chat_data["telegram"] = telegram
+    chat_data["telegram"] = update.message.from_user.username
 
     elected_text = (
         " (Vaalilakanabot ilmoittaa tästä hakemuksesta kanaville)"
@@ -679,8 +682,13 @@ def confirm_application(update: Update, context: CallbackContext) -> int:
         if query.data == "yes":
             name = chat_data["name"]
             position = chat_data["position"]
+            email = chat_data["email"]
+            telegram = chat_data["telegram"]
             new_applicant = {
+                "user_id": update.effective_user.id,
                 "name": name,
+                "email": email,
+                "telegram": telegram,
                 "fiirumi": "",
                 "valittu": False,
             }
@@ -971,9 +979,6 @@ def main():
             ],
             GIVING_EMAIL: [
                 MessageHandler(Filters.text & (~Filters.command), enter_email)
-            ],
-            GIVING_TELEGRAM: [
-                MessageHandler(Filters.text & (~Filters.command), enter_telegram)
             ],
             CONFIRMING_APPLICATION: [CallbackQueryHandler(confirm_application)],
         },
