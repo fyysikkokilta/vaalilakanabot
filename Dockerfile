@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 LABEL version="2024" \
     description="Vaalilakanabot" \

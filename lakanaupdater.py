@@ -3,6 +3,8 @@ import json
 import os
 import requests
 
+from telegram.ext import ContextTypes
+
 API_KEY = os.environ["API_KEY"]
 API_USERNAME = os.environ["API_USERNAME"]
 
@@ -80,7 +82,7 @@ def json_to_markdown(json_data):
     return text
 
 
-def update_election_sheet(context):
+def update_election_sheet(context: ContextTypes.DEFAULT_TYPE):
     # Read the JSON data
     with open("data/vaalilakana.json", "r", encoding="utf-8") as f:
         json_data = f.read()
