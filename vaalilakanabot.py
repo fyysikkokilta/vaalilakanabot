@@ -1,3 +1,4 @@
+from io import StringIO
 import json
 import os
 import sys
@@ -847,16 +848,18 @@ def export_data(update, context):
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
-            with open("data/applicants.csv", "w") as f:
-                f.write("Name,Role,Email,Telegram\n")
-                for division in vaalilakana.values():
-                    for role in division["roles"].values():
-                        for applicant in role["applicants"]:
-                            f.write(
-                                f"{applicant['name']},{role['title']},{applicant['email']},{applicant['telegram']}\n"
-                            )
+
+            output = StringIO()
+            output.write("Name,Role,Email,Telegram\n")
+            for division in vaalilakana.values():
+                for role in division["roles"].values():
+                    for applicant in role["applicants"]:
+                        output.write(
+                            f"{applicant['name']},{role['title']},{applicant['email']},{applicant['telegram']}\n"
+                        )
+            output.seek(0)
             updater.bot.send_document(
-                chat_id, document=open("data/applicants.csv", "rb")
+                chat_id, document=output, filename="applicants.csv"
             )
     except Exception as e:
         logger.error(e)
