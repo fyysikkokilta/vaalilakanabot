@@ -177,6 +177,32 @@ def _vaalilakana_to_string():
     return output
 
 
+async def _announce_to_channels(message: str, context: ContextTypes.DEFAULT_TYPE):
+    for cid in channels:
+        try:
+            await context.bot.send_message(cid, message, parse_mode="HTML")
+            time.sleep(0.5)
+        except Exception as e:
+            logger.error(e)
+            continue
+
+
+def _generate_keyboard(options, callback_data=None):
+    keyboard = []
+    for option in options:
+        if callback_data:
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        option, callback_data=callback_data[options.index(option)]
+                    )
+                ]
+            )
+        else:
+            keyboard.append([InlineKeyboardButton(option, callback_data=option)])
+    return keyboard
+
+
 async def parse_fiirumi_posts(context: ContextTypes.DEFAULT_TYPE):
     try:
         page_fiirumi = requests.get(TOPIC_LIST_URL, timeout=10)
@@ -246,16 +272,6 @@ async def parse_fiirumi_posts(context: ContextTypes.DEFAULT_TYPE):
                     f"Viimeisin vastaaja: {last_poster}"
                 )
                 await _announce_to_channels(announcement, context)
-
-
-async def _announce_to_channels(message: str, context: ContextTypes.DEFAULT_TYPE):
-    for cid in channels:
-        try:
-            await context.bot.send_message(cid, message, parse_mode="HTML")
-            time.sleep(0.5)
-        except Exception as e:
-            logger.error(e)
-            continue
 
 
 async def remove_applicant(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -351,127 +367,270 @@ async def add_fiirumi_to_applicant(update: Update, context: ContextTypes.DEFAULT
         logger.error(e)
 
 
-async def add_applicant(update: Update, context: CallbackContext) -> None:
-    """Add an applicant. This command is for admin use."""
-    keyboard = [
-        [
-            InlineKeyboardButton("Raatiin", callback_data="board"),
-            InlineKeyboardButton("Toimihenkilöksi", callback_data="official"),
-        ]
-    ]
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    chat_id = update.message.chat.id
-    if str(chat_id) == str(ADMIN_CHAT_ID):
-        await update.message.reply_text(
-            "Mihin rooliin henkilö lisätään?", reply_markup=reply_markup
-        )
-        return SELECTING_POSITION_CLASS
-    else:
-        await update.message.reply_text("Et oo admin :(((")
-        return None
-
-
-def generate_keyboard(options, callback_data=None):
-    keyboard = []
-    for option in options:
-        if callback_data:
-            keyboard.append(
-                [
-                    InlineKeyboardButton(
-                        option, callback_data=callback_data[options.index(option)]
-                    )
-                ]
-            )
-        else:
-            keyboard.append([InlineKeyboardButton(option, callback_data=option)])
-    return keyboard
-
-
-async def select_position_class(update: Update, context: CallbackContext) -> int:
-    """Parses the CallbackQuery and updates the message text."""
-    query = update.callback_query
-    await query.answer()
-    chat_data = context.chat_data
-    logger.debug(str(chat_data))
-
-    # CallbackQueries need to be answered, even if no notification to the user is needed
-    # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
-    if query.data == "1":
-        logger.debug("Raati")
-        keyboard = InlineKeyboardMarkup(generate_keyboard(BOARD))
-        await query.edit_message_reply_markup(keyboard)
-        return SELECTING_POSITION
-    elif query.data == "2":
-        logger.debug("Toimihenkilö")
-        keyboard = InlineKeyboardMarkup(generate_keyboard(ELECTED_OFFICIALS))
-        await query.edit_message_reply_markup(keyboard)
-        return SELECTING_POSITION
-    else:
-        return SELECTING_POSITION_CLASS
-
-
-async def select_board_position(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    await query.answer()
-    keyboard = InlineKeyboardMarkup(generate_keyboard(BOARD))
-    await query.edit_message_reply_markup(keyboard)
-    return SELECTING_POSITION
-
-
-async def select_official_position(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    await query.answer()
-    keyboard = InlineKeyboardMarkup(generate_keyboard(ELECTED_OFFICIALS))
-    await query.edit_message_reply_markup(keyboard)
-    return SELECTING_POSITION
-
-
-async def register_position(update: Update, context: CallbackContext) -> int:
-    """Parses the CallbackQuery and updates the message text."""
-    query = update.callback_query
-    chat_data = context.chat_data
-
-    # CallbackQueries need to be answered, even if no notification to the user is needed
-    # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
-    await query.answer()
-    await query.edit_message_text(
-        text=f"Hakija rooliin: {query.data}\nKirjoita hakijan nimi vastauksena tähän viestiin"
-    )
-    chat_data["position"] = query.data
-    return TYPING_NAME
-
-
-async def enter_applicant_name(update: Update, context: CallbackContext) -> int:
-    """Stores the info about the user and ends the conversation."""
-    chat_data = context.chat_data
-    logger.debug(chat_data)
-    name = update.message.text
-    logger.debug(name)
+async def unassociate_fiirumi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        position = chat_data["position"]
-        chat_data["name"] = name
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+            # Converts /poista_fiirumi Puheenjohtaja, Fysisti kiltalainen
+            # to ["Puheenjohtaja", "Fysisti kiltalainen"]
+            params = [
+                arg.strip()
+                for arg in update.message.text.replace("/poista_fiirumi", "")
+                .strip()
+                .split(",")
+            ]
+            # Try find role
+            try:
+                position, name = params
+            except Exception as e:
+                logger.error(e)
+                await update.message.reply_text(
+                    "Virheelliset parametrit - /poista_fiirumi <virka>, <nimi>"
+                )
+                return
 
-        new_applicant = {
-            "name": name,
-            "fiirumi": "",
-            "valittu": False,
-        }
+            if position not in BOARD + ELECTED_OFFICIALS:
+                await update.message.reply_text(
+                    "Virheelliset parametrit, roolia ei löytynyt"
+                )
+                return
 
-        division = _find_division_for_position(position)
-        vaalilakana[division]["roles"][position]["applicants"].append(new_applicant)
-        _save_data("data/vaalilakana.json", vaalilakana)
-        global last_applicant
-        last_applicant = {"position": position, "name": name}
+            # Try finding the dict with matching applicant name from vaalilakana
+            division = _find_division_for_position(position)
+            applicants = vaalilakana[division]["roles"][position]["applicants"]
+            for applicant in applicants:
+                if applicant["name"] == name:
+                    applicant["fiirumi"] = ""
+                    break
+            else:
+                # If the loop didn't break
+                await update.message.reply_text(
+                    "Virheelliset parametrit, hakijaa ei löytynyt roolille"
+                )
+                return
+            _save_data("data/vaalilakana.json", vaalilakana)
+            await update.message.reply_text(f"Fiirumi linkki poistettu:\n{name}")
+        else:
+            # Not admin chat
+            pass
+    except Exception as e:
+        # Unknown error :/
+        logger.error(e)
 
-        await update.message.reply_text(
-            f"Lisätty:\n{position}: {name}.\n\nLähetä tiedote komennolla /tiedota"
+
+async def add_selected_tag(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+            text = update.message.text.replace("/valittu", "").strip()
+            params = text.split(",")
+
+            try:
+                position = params[0].strip()
+                name = params[1].strip()
+            except Exception as e:
+                await update.message.reply_text(
+                    "Virheelliset parametrit - /valittu <virka>, <nimi>"
+                )
+                raise ValueError from e
+
+            if position not in [position["fi"] for position in positions]:
+                await update.message.reply_text(f"Tunnistamaton virka: {position}")
+                raise ValueError(f"Unknown position {position}")
+
+            found = False
+            division = _find_division_for_position(position)
+            applicants = vaalilakana[division]["roles"][position]["applicants"]
+            for applicant in applicants:
+                if name == applicant["name"]:
+                    found = True
+                    applicant["valittu"] = True
+                    break
+
+            if not found:
+                await update.message.reply_text(f"Hakijaa ei löydy: {name}")
+                raise ValueError(f"Applicant not found: {name}")
+
+            _save_data("data/vaalilakana.json", vaalilakana)
+
+            await update.message.reply_text(f"Hakija valittu:\n{position}: {name}")
+    except Exception as e:
+        logger.error(e)
+
+
+async def edit_or_add_new_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+            text = update.message.text.replace("/muokkaa_roolia", "").strip()
+            params = text.split(",")
+
+            try:
+                division = params[0].strip()
+                role = params[1].strip()
+                role_en = params[2].strip() if params[2].strip() else None
+                amount = params[3].strip() if params[3].strip() else None
+                application_dl = params[4].strip() if params[4].strip() else None
+            except Exception as e:
+                await update.message.reply_text(
+                    "Virheelliset parametrit - "
+                    "/muokkaa_roolia <jaos>, <rooli>, <rooli_en>, <hakijamäärä>, <hakuaika>"
+                )
+                raise ValueError("Invalid parameters") from e
+
+            if division not in [division["fi"] for division in divisions]:
+                await update.message.reply_text(f"Tunnistamaton jaos: {division}")
+                raise ValueError(f"Unknown division {division}")
+
+            if role not in [
+                role["title"] for role in vaalilakana[division]["roles"].values()
+            ]:
+                vaalilakana[division]["roles"][role] = {
+                    "title": role,
+                    "title_en": role_en if role_en else role,
+                    "amount": amount,
+                    "application_dl": application_dl,
+                    "applicants": [],
+                }
+                positions.append({"fi": role, "en": role_en})
+                _save_data("data/vaalilakana.json", vaalilakana)
+                await update.message.reply_text(f"Lisätty:\n{division}: {role}")
+            else:
+                vaalilakana[division]["roles"][role] = {
+                    "title": role,
+                    "title_en": role_en if role_en else role,
+                    "amount": amount,
+                    "application_dl": application_dl,
+                    "applicants": vaalilakana[division]["roles"][role]["applicants"],
+                }
+                _save_data("data/vaalilakana.json", vaalilakana)
+                await update.message.reply_text(f"Päivitetty:\n{division}: {role}")
+    except Exception as e:
+        logger.error(e)
+
+
+async def remove_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+            text = update.message.text.replace("/poista_rooli", "").strip()
+            params = text.split(",")
+
+            try:
+                division = params[0].strip()
+                role = params[1].strip()
+            except Exception as e:
+                await update.message.reply_text(
+                    "Virheelliset parametrit - /poista_rooli <jaos>, <rooli>"
+                )
+                raise ValueError("Invalid parameters") from e
+
+            if division not in [division["fi"] for division in divisions]:
+                await update.message.reply_text(f"Tunnistamaton jaos: {division}")
+                raise ValueError(f"Unknown division {division}")
+
+            if role not in [
+                role["title"] for role in vaalilakana[division]["roles"].values()
+            ]:
+                await update.message.reply_text(f"Tunnistamaton rooli: {role}")
+                raise ValueError(f"Unknown role {role}")
+
+            del vaalilakana[division]["roles"][role]
+            positions.remove({"fi": role, "en": role})
+            _save_data("data/vaalilakana.json", vaalilakana)
+            await update.message.reply_text(f"Poistettu:\n{division}: {role}")
+    except Exception as e:
+        logger.error(e)
+
+
+async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Create a csv with the name, role, email and telegram of all applicants
+    try:
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+
+            output = StringIO()
+            output.write("Name,Role,Email,Telegram\n")
+            for division in vaalilakana.values():
+                for role in division["roles"].values():
+                    for applicant in role["applicants"]:
+                        output.write(
+                            f"{applicant['name']},{role['title']},{applicant['email']},{applicant['telegram']}\n"
+                        )
+            output.seek(0)
+            await update.message.reply_document(output, filename="applicants.csv")
+    except Exception as e:
+        logger.error(e)
+
+
+async def register_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        chat_id = update.message.chat.id
+        if chat_id not in channels:
+            channels.append(chat_id)
+            _save_data("data/channels.json", channels)
+            print(f"New channel added {chat_id}", update.message)
+            await update.message.reply_text(
+                "Rekisteröity Vaalilakanabotin tiedotuskanavaksi!"
+            )
+    except Exception as e:
+        logger.error(e)
+
+
+async def show_vaalilakana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        await update.message.reply_html(
+            _vaalilakana_to_string(),
+            disable_web_page_preview=True,
         )
     except Exception as e:
-        # TODO: Return to role selection
         logger.error(e)
-    return ConversationHandler.END
+
+
+async def jauhis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        with open("assets/jauhis.png", "rb") as photo:
+            await update.message.reply_sticker(photo)
+    except Exception as e:
+        logger.warning("Error in sending Jauhis %s", e)
+
+
+async def jauh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        with open("assets/jauh.png", "rb") as photo:
+            await update.message.reply_sticker(photo)
+    except Exception as e:
+        logger.warning("Error in sending Jauh %s", e)
+
+
+async def jauho(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        with open("assets/jauho.png", "rb") as photo:
+            await update.message.reply_sticker(photo)
+    except Exception as e:
+        logger.warning("Error in sending Jauh %s", e)
+
+
+async def lauh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        with open("assets/lauh.png", "rb") as photo:
+            await update.message.reply_sticker(photo)
+    except Exception as e:
+        logger.warning("Error in sending Lauh %s", e)
+
+
+async def mauh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        with open("assets/mauh.png", "rb") as photo:
+            await update.message.reply_sticker(photo)
+    except Exception as e:
+        logger.warning("Error in sending Mauh %s", e)
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_data = context.chat_data
+    chat_data.clear()
+    await update.message.reply_text("Cancelled current operation.")
 
 
 async def hae(update: Update, context: CallbackContext) -> int:
@@ -490,7 +649,7 @@ async def hae(update: Update, context: CallbackContext) -> int:
     return SELECTING_LANGUAGE
 
 
-def get_divisions(is_finnish=True):
+def _get_divisions(is_finnish=True):
     return (
         [division["fi"] if is_finnish else division["en"] for division in divisions],
         [division["fi"] for division in divisions],
@@ -502,9 +661,9 @@ async def select_language(update: Update, context: CallbackContext) -> int:
     chat_data = context.chat_data
     await query.answer()
     chat_data["is_finnish"] = query.data == "fi"
-    localized_divisions, callback_data = get_divisions(chat_data["is_finnish"])
+    localized_divisions, callback_data = _get_divisions(chat_data["is_finnish"])
     keyboard = InlineKeyboardMarkup(
-        generate_keyboard(localized_divisions, callback_data)
+        _generate_keyboard(localized_divisions, callback_data)
     )
     text = (
         "Minkä jaoksen virkaan haet?"
@@ -518,7 +677,7 @@ async def select_language(update: Update, context: CallbackContext) -> int:
     return SELECTING_DIVISION
 
 
-def get_positions(division, is_finnish=True):
+def _get_positions(division, is_finnish=True):
     return (
         [
             role["title"] if is_finnish else role["title_en"]
@@ -533,11 +692,11 @@ async def select_division(update: Update, context: CallbackContext) -> int:
     chat_data = context.chat_data
     await query.answer()
     chat_data["division"] = query.data
-    localized_positions, callback_data = get_positions(
+    localized_positions, callback_data = _get_positions(
         query.data, chat_data["is_finnish"]
     )
     keyboard = InlineKeyboardMarkup(
-        generate_keyboard(localized_positions, callback_data)
+        _generate_keyboard(localized_positions, callback_data)
     )
     text = (
         "Mihin rooliin haet?"
@@ -706,292 +865,9 @@ async def confirm_application(update: Update, context: CallbackContext) -> int:
     return ConversationHandler.END
 
 
-async def unassociate_fiirumi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        chat_id = update.message.chat.id
-        if str(chat_id) == str(ADMIN_CHAT_ID):
-            # Converts /poista_fiirumi Puheenjohtaja, Fysisti kiltalainen
-            # to ["Puheenjohtaja", "Fysisti kiltalainen"]
-            params = [
-                arg.strip()
-                for arg in update.message.text.replace("/poista_fiirumi", "")
-                .strip()
-                .split(",")
-            ]
-            # Try find role
-            try:
-                position, name = params
-            except Exception as e:
-                logger.error(e)
-                await update.message.reply_text(
-                    "Virheelliset parametrit - /poista_fiirumi <virka>, <nimi>"
-                )
-                return
-
-            if position not in BOARD + ELECTED_OFFICIALS:
-                await update.message.reply_text(
-                    "Virheelliset parametrit, roolia ei löytynyt"
-                )
-                return
-
-            # Try finding the dict with matching applicant name from vaalilakana
-            division = _find_division_for_position(position)
-            applicants = vaalilakana[division]["roles"][position]["applicants"]
-            for applicant in applicants:
-                if applicant["name"] == name:
-                    applicant["fiirumi"] = ""
-                    break
-            else:
-                # If the loop didn't break
-                await update.message.reply_text(
-                    "Virheelliset parametrit, hakijaa ei löytynyt roolille"
-                )
-                return
-            _save_data("data/vaalilakana.json", vaalilakana)
-            await update.message.reply_text(f"Fiirumi linkki poistettu:\n{name}")
-        else:
-            # Not admin chat
-            pass
-    except Exception as e:
-        # Unknown error :/
-        logger.error(e)
-
-
-async def add_selected_tag(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        chat_id = update.message.chat.id
-        if str(chat_id) == str(ADMIN_CHAT_ID):
-            text = update.message.text.replace("/valittu", "").strip()
-            params = text.split(",")
-
-            try:
-                position = params[0].strip()
-                name = params[1].strip()
-            except Exception as e:
-                await update.message.reply_text(
-                    "Virheelliset parametrit - /valittu <virka>, <nimi>"
-                )
-                raise ValueError from e
-
-            if position not in [position["fi"] for position in positions]:
-                await update.message.reply_text(f"Tunnistamaton virka: {position}")
-                raise ValueError(f"Unknown position {position}")
-
-            found = False
-            division = _find_division_for_position(position)
-            applicants = vaalilakana[division]["roles"][position]["applicants"]
-            for applicant in applicants:
-                if name == applicant["name"]:
-                    found = True
-                    applicant["valittu"] = True
-                    break
-
-            if not found:
-                await update.message.reply_text(f"Hakijaa ei löydy: {name}")
-                raise ValueError(f"Applicant not found: {name}")
-
-            _save_data("data/vaalilakana.json", vaalilakana)
-
-            await update.message.reply_text(f"Hakija valittu:\n{position}: {name}")
-    except Exception as e:
-        logger.error(e)
-
-
-async def announce_new_applicant(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        chat_id = update.message.chat.id
-        if str(chat_id) == str(ADMIN_CHAT_ID):
-            global last_applicant
-            if last_applicant:
-                position = last_applicant["position"]
-                name = last_applicant["name"]
-                await _announce_to_channels(
-                    f"<b>Uusi nimi vaalilakanassa!</b>\n{position}: <i>{name}</i>",
-                    context,
-                )
-            last_applicant = None
-    except Exception as e:
-        logger.error(e)
-
-
-async def edit_or_add_new_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        chat_id = update.message.chat.id
-        if str(chat_id) == str(ADMIN_CHAT_ID):
-            text = update.message.text.replace("/muokkaa_roolia", "").strip()
-            params = text.split(",")
-
-            try:
-                division = params[0].strip()
-                role = params[1].strip()
-                role_en = params[2].strip() if params[2].strip() else None
-                amount = params[3].strip() if params[3].strip() else None
-                application_dl = params[4].strip() if params[4].strip() else None
-            except Exception as e:
-                await update.message.reply_text(
-                    "Virheelliset parametrit - "
-                    "/muokkaa_roolia <jaos>, <rooli>, <rooli_en>, <hakijamäärä>, <hakuaika>"
-                )
-                raise ValueError("Invalid parameters") from e
-
-            if division not in [division["fi"] for division in divisions]:
-                await update.message.reply_text(f"Tunnistamaton jaos: {division}")
-                raise ValueError(f"Unknown division {division}")
-
-            if role not in [
-                role["title"] for role in vaalilakana[division]["roles"].values()
-            ]:
-                vaalilakana[division]["roles"][role] = {
-                    "title": role,
-                    "title_en": role_en if role_en else role,
-                    "amount": amount,
-                    "application_dl": application_dl,
-                    "applicants": [],
-                }
-                positions.append({"fi": role, "en": role_en})
-                _save_data("data/vaalilakana.json", vaalilakana)
-                await update.message.reply_text(f"Lisätty:\n{division}: {role}")
-            else:
-                vaalilakana[division]["roles"][role] = {
-                    "title": role,
-                    "title_en": role_en if role_en else role,
-                    "amount": amount,
-                    "application_dl": application_dl,
-                    "applicants": vaalilakana[division]["roles"][role]["applicants"],
-                }
-                _save_data("data/vaalilakana.json", vaalilakana)
-                await update.message.reply_text(f"Päivitetty:\n{division}: {role}")
-    except Exception as e:
-        logger.error(e)
-
-
-async def remove_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        chat_id = update.message.chat.id
-        if str(chat_id) == str(ADMIN_CHAT_ID):
-            text = update.message.text.replace("/poista_rooli", "").strip()
-            params = text.split(",")
-
-            try:
-                division = params[0].strip()
-                role = params[1].strip()
-            except Exception as e:
-                await update.message.reply_text(
-                    "Virheelliset parametrit - /poista_rooli <jaos>, <rooli>"
-                )
-                raise ValueError("Invalid parameters") from e
-
-            if division not in [division["fi"] for division in divisions]:
-                await update.message.reply_text(f"Tunnistamaton jaos: {division}")
-                raise ValueError(f"Unknown division {division}")
-
-            if role not in [
-                role["title"] for role in vaalilakana[division]["roles"].values()
-            ]:
-                await update.message.reply_text(f"Tunnistamaton rooli: {role}")
-                raise ValueError(f"Unknown role {role}")
-
-            del vaalilakana[division]["roles"][role]
-            positions.remove({"fi": role, "en": role})
-            _save_data("data/vaalilakana.json", vaalilakana)
-            await update.message.reply_text(f"Poistettu:\n{division}: {role}")
-    except Exception as e:
-        logger.error(e)
-
-
-async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Create a csv with the name, role, email and telegram of all applicants
-    try:
-        chat_id = update.message.chat.id
-        if str(chat_id) == str(ADMIN_CHAT_ID):
-
-            output = StringIO()
-            output.write("Name,Role,Email,Telegram\n")
-            for division in vaalilakana.values():
-                for role in division["roles"].values():
-                    for applicant in role["applicants"]:
-                        output.write(
-                            f"{applicant['name']},{role['title']},{applicant['email']},{applicant['telegram']}\n"
-                        )
-            output.seek(0)
-            await update.message.reply_document(output, filename="applicants.csv")
-    except Exception as e:
-        logger.error(e)
-
-
-async def show_vaalilakana(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        await update.message.reply_html(
-            _vaalilakana_to_string(),
-            disable_web_page_preview=True,
-        )
-    except Exception as e:
-        logger.error(e)
-
-
-async def register_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        chat_id = update.message.chat.id
-        if chat_id not in channels:
-            channels.append(chat_id)
-            _save_data("data/channels.json", channels)
-            print(f"New channel added {chat_id}", update.message)
-            await update.message.reply_text(
-                "Rekisteröity Vaalilakanabotin tiedotuskanavaksi!"
-            )
-    except Exception as e:
-        logger.error(e)
-
-
-async def jauhis(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        with open("assets/jauhis.png", "rb") as photo:
-            await update.message.reply_sticker(photo)
-    except Exception as e:
-        logger.warning("Error in sending Jauhis %s", e)
-
-
-async def jauh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        with open("assets/jauh.png", "rb") as photo:
-            await update.message.reply_sticker(photo)
-    except Exception as e:
-        logger.warning("Error in sending Jauh %s", e)
-
-
-async def jauho(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        with open("assets/jauho.png", "rb") as photo:
-            await update.message.reply_sticker(photo)
-    except Exception as e:
-        logger.warning("Error in sending Jauh %s", e)
-
-
-async def lauh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        with open("assets/lauh.png", "rb") as photo:
-            await update.message.reply_sticker(photo)
-    except Exception as e:
-        logger.warning("Error in sending Lauh %s", e)
-
-
-async def mauh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        with open("assets/mauh.png", "rb") as photo:
-            await update.message.reply_sticker(photo)
-    except Exception as e:
-        logger.warning("Error in sending Mauh %s", e)
-
-
 async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log Errors caused by Updates."""
     logger.warning('Update "%s" caused error "%s"', update, context.error)
-
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_data = context.chat_data
-    chat_data.clear()
-    await update.message.reply_text("Cancelled current operation.")
 
 
 async def post_init(app: Application):
@@ -1001,11 +877,10 @@ async def post_init(app: Application):
     jq.run_repeating(parse_fiirumi_posts, interval=60, first=0)
     jq.run_repeating(update_election_sheet, interval=60, first=0)
 
-    app.add_handler(CommandHandler("valittu", add_selected_tag))
+    app.add_handler(CommandHandler("poista", remove_applicant))
     app.add_handler(CommandHandler("lisaa_fiirumi", add_fiirumi_to_applicant))
     app.add_handler(CommandHandler("poista_fiirumi", unassociate_fiirumi))
-    app.add_handler(CommandHandler("poista", remove_applicant))
-    app.add_handler(CommandHandler("tiedota", announce_new_applicant))
+    app.add_handler(CommandHandler("valittu", add_selected_tag))
     app.add_handler(CommandHandler("muokkaa_roolia", edit_or_add_new_role))
     app.add_handler(CommandHandler("poista_rooli", remove_role))
     app.add_handler(CommandHandler("vie_tiedot", export_data))
@@ -1016,26 +891,6 @@ async def post_init(app: Application):
     app.add_handler(CommandHandler("jauho", jauho))
     app.add_handler(CommandHandler("lauh", lauh))
     app.add_handler(CommandHandler("mauh", mauh))
-
-    admin_add_handler = ConversationHandler(
-        entry_points=[CommandHandler("lisaa", add_applicant)],
-        states={
-            SELECTING_POSITION_CLASS: [
-                CallbackQueryHandler(select_board_position, pattern="^board$"),
-                CallbackQueryHandler(select_official_position, pattern="^official$"),
-            ],
-            SELECTING_POSITION: [CallbackQueryHandler(register_position)],
-            TYPING_NAME: [
-                MessageHandler(filters.TEXT & (~filters.COMMAND), enter_applicant_name)
-            ],
-        },
-        fallbacks=[
-            CommandHandler("cancel", cancel),
-            CommandHandler("lisaa", add_applicant),
-        ],
-    )
-
-    app.add_handler(admin_add_handler)
 
     apply_handler = ConversationHandler(
         entry_points=[CommandHandler("hae", hae, filters.ChatType.PRIVATE)],
