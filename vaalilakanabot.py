@@ -601,7 +601,7 @@ async def jauho(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open("assets/jauho.png", "rb") as photo:
             await update.message.reply_sticker(photo)
     except Exception as e:
-        logger.warning("Error in sending Jauh %s", e)
+        logger.warning("Error in sending Jauho %s", e)
 
 
 async def lauh(update: Update, context: ContextTypes.DEFAULT_TYPE):
