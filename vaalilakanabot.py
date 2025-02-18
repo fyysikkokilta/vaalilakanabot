@@ -184,7 +184,7 @@ async def _announce_to_channels(message: str, context: ContextTypes.DEFAULT_TYPE
             continue
 
 
-def _generate_keyboard(options, callback_data=None):
+def _generate_keyboard(options, callback_data=None, back=None):
     keyboard = []
     for option in options:
         if callback_data:
@@ -197,6 +197,9 @@ def _generate_keyboard(options, callback_data=None):
             )
         else:
             keyboard.append([InlineKeyboardButton(option, callback_data=option)])
+
+    if back:
+        keyboard.insert(0, [InlineKeyboardButton(back, callback_data="back")])
     return keyboard
 
 
@@ -655,7 +658,7 @@ async def select_language(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     chat_data = context.chat_data
     await query.answer()
-    chat_data["is_finnish"] = query.data == "fi"
+    chat_data["is_finnish"] = query.data == "fi" or chat_data["is_finnish"]
     localized_divisions, callback_data = _get_divisions(chat_data["is_finnish"])
     keyboard = InlineKeyboardMarkup(
         _generate_keyboard(localized_divisions, callback_data)
@@ -691,7 +694,11 @@ async def select_division(update: Update, context: CallbackContext) -> int:
         query.data, chat_data["is_finnish"]
     )
     keyboard = InlineKeyboardMarkup(
-        _generate_keyboard(localized_positions, callback_data)
+        _generate_keyboard(
+            localized_positions,
+            callback_data,
+            back=("Takaisin" if chat_data["is_finnish"] else "Back"),
+        )
     )
     text = (
         "Mihin rooliin haet?"
@@ -891,10 +898,9 @@ async def post_init(app: Application):
         entry_points=[CommandHandler("hae", hae, filters.ChatType.PRIVATE)],
         states={
             SELECTING_LANGUAGE: [CallbackQueryHandler(select_language)],
-            SELECTING_DIVISION: [
-                CallbackQueryHandler(select_division),
-            ],
+            SELECTING_DIVISION: [CallbackQueryHandler(select_division)],
             SELECTING_ROLE: [
+                CallbackQueryHandler(select_language, pattern="back"),
                 CallbackQueryHandler(select_role),
             ],
             GIVING_NAME: [
