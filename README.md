@@ -10,17 +10,31 @@ Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista 
 
 ## Käyttöönotto
 - asenna `python-telegram-bot`-kirjasto (versio >=21) ja muut tarvittavat kirjastot.
-- lisää Bot Fatherilta saatava `VAALILAKANABOT_TOKEN` ympäristönmuuttujaksi käyttöjärjestelmään.
-- täydennä ADMIN_CHAT_ID koodiin. (halutun ryhmän id:n saa esimerkiksi lisäämällä botin `@RawDataBot` haluttuun ryhmään)
-- Päivitä TOPIC_LIST_URL ja QUESTION_LIST_URL -muuttujat koodiin. Katso [Discoursen dokumentaatio](https://docs.discourse.org/#tag/Categories/paths/~1c~1{id}.json/get) oikeanlaisen URL:n asettamiseksi.
+- lisää Telegram-bot Bot Father -botilla ja ota botin token talteen.
+- Luo Discourse api-avain bottia varten.
+- Luo admin Telegram-ryhmä ja ota sen id talteen esimerkiksi botilla `@RawDataBot`.
+- Luo vaalilakana Fiirumille.
+    - Viestissä, jossa vaalilakana sijaitsee ei saa olla muuta tekstiä kuin itse vaalilakana.
+    - Jaoksien nimet tulee olla ISOLLA kirjoitettuna ja rivi saa sisältää vain suomenkielisen ja englanninkielisen käännöksen /-merkillä jaettuna.
+    - Roolirivit tulee olla muodossa `{suomenkielinen nimi} / {englanninkielinen nimi} ({valittavien määrä}) {haun deadline (muodossa xx.yy.}`
+        - Kaikki muut paitsi suomenkielinen nimi ovat vapaaehtoisia, mutta järjestyksen tulee olla juuri tämä.
+- Luo `bot.env` esimerkkitiedoston `bot.env.example` mukaisesti.
 - `$ python vaalilakanabot.py` 
 - lisää botti relevantteihin keskusteluryhmiin.
 
 ## Running the bot with Docker
-- create Discourse api keys to be used by the bot.
-- create `bot.env` according to the example file `bot.env.example`.
-- make sure the empty vaalilakana is already created when starting the bot so that the local json is populated.
-- start the bot using provided `update-deployment.sh` script.
+- Create a Telegram bot and save the bot token.
+- Create Discourse api keys to be used by the bot.
+- Create an admin Telegram group and get the id of the group using, for example, `@RawDataBot`.
+- Create the vaalilakana for Fiirumi.  
+    - The message containing the vaalilakana must not have any text other than the vaalilakana itself.  
+    - Division names must be written in ALL CAPS, and each line should contain only the Finnish and English translations separated by a `/`.  
+    - Role lines must follow the format:  
+      `{Finnish name} / {English name} ({number of positions}) {application deadline (in the format xx.yy.)}`  
+        - Everything except the Finnish name is optional, but the order must be exactly as specified.
+- Create `bot.env` according to the example file `bot.env.example`.
+- Make sure the empty vaalilakana is already created when starting the bot so that the local json is populated.
+- Start the bot using provided `update-deployment.sh` script.
 
 ## Komennot
 Botti tukee seuraavia komentoja:
