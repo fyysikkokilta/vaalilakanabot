@@ -530,8 +530,8 @@ async def remove_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if role not in [
                 role["title"] for role in vaalilakana[division]["roles"].values()
             ]:
-                await update.message.reply_text(f"Tunnistamaton rooli: {role}")
-                raise ValueError(f"Unknown role {role}")
+                await update.message.reply_text(f"Tunnistamaton virka: {role}")
+                raise ValueError(f"Unknown position {role}")
 
             del vaalilakana[division]["roles"][role]
             positions.remove({"fi": role, "en": role})
@@ -546,15 +546,30 @@ async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
+            text = update.message.text.replace("/vie_tiedot", "").strip()
+            params = text.split(",")
 
             output = StringIO()
             output.write("Name,Role,Email,Telegram\n")
-            for division in vaalilakana.values():
-                for role in division["roles"].values():
-                    for applicant in role["applicants"]:
-                        output.write(
-                            f"{applicant['name']},{role['title']},{applicant['email']},{applicant['telegram']}\n"
-                        )
+
+            if len(text) > 0:
+                role = params[0].strip()
+                if role not in [position["fi"] for position in positions]:
+                    await update.message.reply_text(f"Tunnistamaton virka: {role}")
+                    raise ValueError(f"Unknown position {role}")
+
+                division = _find_division_for_position(role)
+                for applicant in vaalilakana[division]["roles"][role]["applicants"]:
+                    output.write(
+                        f"{applicant['name']},{role},{applicant['email']},{applicant['telegram']}\n"
+                    )
+            else:
+                for division in vaalilakana.values():
+                    for role in division["roles"].values():
+                        for applicant in role["applicants"]:
+                            output.write(
+                                f"{applicant['name']},{role['title']},{applicant['email']},{applicant['telegram']}\n"
+                            )
             output.seek(0)
             await update.message.reply_document(output, filename="applicants.csv")
     except Exception as e:
