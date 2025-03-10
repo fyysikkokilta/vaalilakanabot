@@ -1,5 +1,4 @@
 *.env
-google_service_account_creds.json
 
 #Exclude all but example data
 data/*
