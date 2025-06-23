@@ -1,0 +1,12 @@
+services:
+  bot:
+    image: ghcr.io/fyysikkokilta/vaalilakanabot:latest
+    volumes:
+      - ./data:/bot/data:rw
+    env_file:
+      - bot.env
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"

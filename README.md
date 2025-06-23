@@ -9,6 +9,19 @@ Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista 
 - Botin admin-käyttäjä voi ylläpitää sähköistä vaalilakanaa.
 - Jauhistelu
 
+## CI/CD Pipeline
+
+This project uses GitHub Actions for continuous integration and deployment:
+
+- **Automatic builds**: Docker images are automatically built and pushed to GitHub Container Registry on every push to main/master branch
+- **Image tags**: Images are tagged with branch name, commit SHA, and semantic version tags
+- **Registry**: Images are available at `ghcr.io/fyysikkokilta/vaalilakanabot`
+
+### Development vs Production
+
+- **Development**: Use `docker-compose up` (uses local build via override file)
+- **Production**: Use `docker-compose -f docker-compose.prod.yml up` (uses pre-built image)
+
 ## Käyttöönotto
 
 - asenna `python-telegram-bot`-kirjasto (versio >=21) ja muut tarvittavat kirjastot.
@@ -37,7 +50,26 @@ Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista 
     - Everything except the Finnish name is optional, but the order must be exactly as specified.
 - Create `bot.env` according to the example file `bot.env.example`.
 - Make sure the empty vaalilakana is already created when starting the bot so that the local json is populated.
-- Start the bot using provided `update-deployment.sh` script.
+
+### Docker Deployment Options
+
+**Development (local build):**
+
+```bash
+docker-compose up
+```
+
+**Production (pre-built image):**
+
+```bash
+docker-compose -f docker-compose.prod.yml up
+```
+
+**Using the deployment script:**
+
+```bash
+./update-deployment.sh
+```
 
 ## Komennot
 
