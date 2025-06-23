@@ -204,6 +204,26 @@ def _generate_keyboard(options, callback_data=None, back=None):
     return keyboard
 
 
+def _check_title_matches_applicant_and_role(
+    title, applicant_name, role_title, role_title_en
+):
+    """Check if a post title contains both the applicant name and role name."""
+    title_lower = title.lower()
+    name_lower = applicant_name.lower()
+    role_lower = role_title.lower()
+    role_en_lower = role_title_en.lower() if role_title_en else ""
+
+    # Check if title contains the applicant name
+    name_in_title = name_lower in title_lower
+
+    # Check if title contains either Finnish or English role name
+    role_in_title = role_lower in title_lower or (
+        role_en_lower and role_en_lower in title_lower
+    )
+
+    return name_in_title and role_in_title
+
+
 async def parse_fiirumi_posts(context: ContextTypes.DEFAULT_TYPE):
     try:
         page_fiirumi = requests.get(TOPIC_LIST_URL, timeout=10)
@@ -237,8 +257,36 @@ async def parse_fiirumi_posts(context: ContextTypes.DEFAULT_TYPE):
             }
             fiirumi_posts[str(t_id)] = new_post
             _save_data("data/fiirumi_posts.json", fiirumi_posts)
+
+            # Try to automatically link this post to an applicant
+            fiirumi_link = f"{BASE_URL}/t/{slug}/{t_id}"
+            linked_applicants = []
+
+            # Check all elected roles (BOARD + ELECTED_OFFICIALS)
+            for position in BOARD + ELECTED_OFFICIALS:
+                division = _find_division_for_position(position)
+                if division:
+                    role_data = vaalilakana[division]["roles"][position]
+                    for applicant in role_data["applicants"]:
+                        if _check_title_matches_applicant_and_role(
+                            title,
+                            applicant["name"],
+                            role_data["title"],
+                            role_data["title_en"],
+                        ):
+                            # Link the post to this applicant
+                            applicant["fiirumi"] = fiirumi_link
+                            linked_applicants.append(f"{position}: {applicant['name']}")
+
+            # Save the updated vaalilakana if any links were made
+            if linked_applicants:
+                _save_data("data/vaalilakana.json", vaalilakana)
+                logger.info(
+                    f"Auto-linked post '{title}' to applicants: {linked_applicants}"
+                )
+
             await _announce_to_channels(
-                f"<b>Uusi postaus Vaalipeli-palstalla!</b>\n{title}\n{BASE_URL}/t/{slug}/{t_id}",
+                f"<b>Uusi postaus Vaalipeli-palstalla!</b>\n{title}\n{fiirumi_link}",
                 context,
             )
 
