@@ -262,17 +262,56 @@ async def parse_fiirumi_posts(context: ContextTypes.DEFAULT_TYPE):
             )
 
         else:
-            has_new_posts = posts_count > question_posts[str(t_id)]["posts_count"]
+            # Update the posts count but don't announce individual responses
+            # They will be handled by the separate response announcement function
             question_posts[str(t_id)]["posts_count"] = posts_count
             _save_data("data/question_posts.json", question_posts)
-            if has_new_posts:
-                last_poster = question["last_poster_username"]
-                announcement = (
-                    f"<b>Uusia vastauksia Fiirumilla!</b>\n"
-                    f"{title}\n{BASE_URL}/t/{slug}/{t_id}/{posts_count}\n"
-                    f"Viimeisin vastaaja: {last_poster}"
-                )
-                await _announce_to_channels(announcement, context)
+
+
+async def announce_new_responses(context: ContextTypes.DEFAULT_TYPE):
+    """Announce new responses to questions in a grouped message, runs every hour."""
+    try:
+        page_question = requests.get(QUESTION_LIST_URL, timeout=10)
+        question_list_raw = page_question.json()
+        question_list = question_list_raw["topic_list"]["topics"]
+
+        new_responses = []
+
+        for question in question_list:
+            t_id = question["id"]
+            title = question["title"]
+            slug = question["slug"]
+            posts_count = question["posts_count"]
+
+            if str(t_id) in question_posts:
+                stored_count = question_posts[str(t_id)]["posts_count"]
+                if posts_count > stored_count:
+                    # There are new responses
+                    new_responses.append(
+                        {
+                            "title": title,
+                            "slug": slug,
+                            "t_id": t_id,
+                            "posts_count": posts_count,
+                            "last_poster": question.get(
+                                "last_poster_username", "Unknown"
+                            ),
+                        }
+                    )
+
+        # If there are new responses, create a single grouped message
+        if new_responses:
+            message = "<b>Uusia vastauksia Fiirumilla!</b>\n\n"
+
+            for response in new_responses:
+                message += f"• <b>{response['title']}</b>\n"
+                message += f"  {BASE_URL}/t/{response['slug']}/{response['t_id']}/{response['posts_count']}\n"
+                message += f"  Viimeisin vastaaja: {response['last_poster']}\n\n"
+
+            await _announce_to_channels(message, context)
+
+    except Exception as e:
+        logger.error(f"Error in announce_new_responses: {e}")
 
 
 async def remove_applicant(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -909,6 +948,7 @@ async def post_init(app: Application):
     if jq is None:
         raise ValueError("JobQueue is None")
     jq.run_repeating(parse_fiirumi_posts, interval=60, first=0)
+    jq.run_repeating(announce_new_responses, interval=3600, first=0)
     jq.run_repeating(update_election_sheet, interval=60, first=0)
 
     app.add_handler(CommandHandler("poista", remove_applicant))
