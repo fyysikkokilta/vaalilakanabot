@@ -1,6 +1,6 @@
 FROM python:3.13-slim
 
-LABEL version="2024" \
+LABEL version="2025" \
     description="Vaalilakanabot" \
     org.opencontainers.image.source="https://github.com/fyysikkokilta/vaalilakanabot"
 
@@ -9,6 +9,7 @@ COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 
 COPY assets ./assets
+COPY src ./src
 COPY vaalilakanabot.py vaalilakanabot.py
 COPY createvaalilakana.py createvaalilakana.py
 COPY lakanaupdater.py lakanaupdater.py

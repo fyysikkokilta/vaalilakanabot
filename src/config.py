@@ -1,0 +1,24 @@
+"""Configuration settings for the Vaalilakanabot."""
+
+import os
+
+# Bot configuration
+TOKEN = os.environ["VAALILAKANABOT_TOKEN"]
+ADMIN_CHAT_ID = os.environ["ADMIN_CHAT_ID"]
+BASE_URL = os.environ["BASE_URL"]
+
+# API URLs
+TOPIC_LIST_URL = os.environ["TOPIC_LIST_URL"]
+QUESTION_LIST_URL = os.environ["QUESTION_LIST_URL"]
+
+# Election positions
+BOARD = os.environ["BOARD"].split(",")
+ELECTED_OFFICIALS = os.environ["ELECTED_OFFICIALS"].split(",")
+
+# Conversation states
+SELECTING_LANGUAGE = "SELECTING_LANGUAGE"
+SELECTING_DIVISION = "SELECTING_DIVISION"
+SELECTING_ROLE = "SELECTING_ROLE"
+GIVING_NAME = "GIVING_NAME"
+GIVING_EMAIL = "GIVING_EMAIL"
+CONFIRMING_APPLICATION = "CONFIRMING_APPLICATION"
