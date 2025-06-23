@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 
 import logging
 import requests
@@ -691,12 +692,28 @@ async def select_language(update: Update, context: CallbackContext) -> int:
 
 
 def _get_positions(division, is_finnish=True):
+    current_date = datetime.now()
+    filtered_roles = []
+
+    for role in vaalilakana[division]["roles"].values():
+        # Check if there's a deadline and if it has passed
+        if role.get("application_dl"):
+            try:
+                # Parse date in dd.mm format and assume current year
+                day, month = role["application_dl"].split(".")
+                deadline = datetime(current_date.year, int(month), int(day))
+
+                if current_date.date() > deadline.date():
+                    continue  # Skip this position if deadline has passed
+            except (ValueError, AttributeError):
+                # If date parsing fails, include the position (assume no deadline)
+                pass
+
+        filtered_roles.append(role)
+
     return (
-        [
-            role["title"] if is_finnish else role["title_en"]
-            for role in vaalilakana[division]["roles"].values()
-        ],
-        [role["title"] for role in vaalilakana[division]["roles"].values()],
+        [role["title"] if is_finnish else role["title_en"] for role in filtered_roles],
+        [role["title"] for role in filtered_roles],
     )
 
 
