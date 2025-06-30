@@ -1,6 +1,7 @@
 """Application conversation handlers."""
 
 import logging
+import uuid
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler, ContextTypes
@@ -16,7 +17,7 @@ from .config import (
     ELECTED_OFFICIALS,
 )
 from .utils import generate_keyboard
-from .announcements import announce_to_channels
+from .admin_approval import send_admin_approval_request
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -102,7 +103,10 @@ async def select_role(
     await query.answer()
 
     user_id = update.effective_user.id
-    if data_manager.check_applicant_exists(query.data, user_id):
+    position = query.data
+
+    # Check if user already has an approved application
+    if data_manager.check_applicant_exists(position, user_id):
         text = (
             "Olet jo hakenut tähän rooliin!"
             if chat_data["is_finnish"]
@@ -111,11 +115,24 @@ async def select_role(
         await query.edit_message_text(text)
         return ConversationHandler.END
 
-    chat_data["position"] = query.data
+    # Check if user has a pending application for elected roles
+    if (
+        position in BOARD + ELECTED_OFFICIALS
+        and data_manager.check_pending_application_exists(position, user_id)
+    ):
+        text = (
+            "Sinulla on jo odottava hakemus tähän rooliin!"
+            if chat_data["is_finnish"]
+            else "You already have a pending application for this position!"
+        )
+        await query.edit_message_text(text)
+        return ConversationHandler.END
+
+    chat_data["position"] = position
     chat_data["loc_position"] = (
         chat_data["position"]
         if chat_data["is_finnish"]
-        else data_manager.vaalilakana[chat_data["division"]]["roles"][query.data][
+        else data_manager.vaalilakana[chat_data["division"]]["roles"][position][
             "title_en"
         ]
     )
@@ -161,12 +178,12 @@ async def enter_email(
     chat_data["telegram"] = update.message.from_user.username
 
     elected_text = (
-        " (Vaalilakanabot ilmoittaa tästä hakemuksesta kanaville)"
+        " (Hakemus vaatii admin-hyväksynnän ennen lisäämistä vaalilakanaan)"
         if chat_data["is_elected"]
         else ""
     )
     elected_text_en = (
-        " (Vaalilakanabot will announce this application to the channels)"
+        " (Application requires admin approval before being added to the election sheet)"
         if chat_data["is_elected"]
         else ""
     )
@@ -219,6 +236,8 @@ async def confirm_application(
             position = chat_data["position"]
             email = chat_data["email"]
             telegram = chat_data["telegram"]
+            division = data_manager.find_division_for_position(position)
+
             new_applicant = {
                 "user_id": update.effective_user.id,
                 "name": name,
@@ -228,21 +247,42 @@ async def confirm_application(
                 "valittu": False,
             }
 
+            # Check if this is an elected role that needs admin approval
             if position in BOARD + ELECTED_OFFICIALS:
-                await announce_to_channels(
-                    f"<b>Uusi nimi vaalilakanassa!</b>\n{position}: <i>{name}</i>",
-                    context,
-                    data_manager,
+                # Generate unique application ID
+                application_id = str(uuid.uuid4())
+
+                # Create pending application
+                application_data = {
+                    "applicant": new_applicant,
+                    "position": position,
+                    "division": division,
+                    "language": "fi" if chat_data["is_finnish"] else "en",
+                }
+
+                # Add to pending applications
+                data_manager.add_pending_application(application_id, application_data)
+
+                # Send admin approval request
+                await send_admin_approval_request(
+                    context, data_manager, application_id, application_data
                 )
 
-            division = data_manager.find_division_for_position(position)
-            data_manager.add_applicant(division, position, new_applicant)
+                text = (
+                    "Hakemuksesi on lähetetty ja odottaa admin-hyväksyntää. Saat ilmoituksen kun hakemus on käsitelty."
+                    if chat_data["is_finnish"]
+                    else "Your application has been sent and is awaiting admin approval. You will be notified when it's processed."
+                )
+            else:
+                # For non-elected roles, add directly
+                data_manager.add_applicant(division, position, new_applicant)
 
-            text = (
-                "Hakemuksesi on vastaanotettu. Kiitos!"
-                if chat_data["is_finnish"]
-                else "Your application has been received. Thank you!"
-            )
+                text = (
+                    "Hakemuksesi on vastaanotettu. Kiitos!"
+                    if chat_data["is_finnish"]
+                    else "Your application has been received. Thank you!"
+                )
+
             await query.edit_message_text(text, reply_markup=None)
         else:
             text = (

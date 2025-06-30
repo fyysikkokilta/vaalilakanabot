@@ -19,6 +19,7 @@ class DataManager:
         self.question_posts = {}
         self.positions = []
         self.divisions = []
+        self.pending_applications = {}
 
         self._load_all_data()
 
@@ -28,6 +29,7 @@ class DataManager:
         self._load_channels()
         self._load_fiirumi_posts()
         self._load_question_posts()
+        self._load_pending_applications()
 
     def _load_vaalilakana(self):
         """Load vaalilakana data."""
@@ -90,6 +92,17 @@ class DataManager:
             self.question_posts = {}
 
         logger.info("Loaded question posts: %s", self.question_posts)
+
+    def _load_pending_applications(self):
+        """Load pending applications data."""
+        try:
+            with open("data/pending_applications.json", "r") as f:
+                data = f.read()
+                self.pending_applications = json.loads(data)
+        except FileNotFoundError:
+            self.pending_applications = {}
+
+        logger.info("Loaded pending applications: %s", self.pending_applications)
 
     def save_data(self, filename: str, content: Any):
         """Save data to a file."""
@@ -221,3 +234,49 @@ class DataManager:
             applicants = self.vaalilakana[division]["roles"][position]["applicants"]
             return any(applicant["user_id"] == user_id for applicant in applicants)
         return False
+
+    def check_pending_application_exists(self, position: str, user_id: int) -> bool:
+        """Check if a user has a pending application for a position."""
+        for application in self.pending_applications.values():
+            if (
+                application["position"] == position
+                and application["applicant"]["user_id"] == user_id
+            ):
+                return True
+        return False
+
+    def add_pending_application(self, application_id: str, application_data: Dict):
+        """Add a new pending application awaiting admin approval."""
+        self.pending_applications[application_id] = application_data
+        self.save_data("data/pending_applications.json", self.pending_applications)
+
+    def remove_pending_application(self, application_id: str):
+        """Remove a pending application."""
+        if application_id in self.pending_applications:
+            del self.pending_applications[application_id]
+            self.save_data("data/pending_applications.json", self.pending_applications)
+
+    def get_pending_application(self, application_id: str) -> Dict:
+        """Get a pending application by ID."""
+        return self.pending_applications.get(application_id, {})
+
+    def approve_application(self, application_id: str) -> Dict:
+        """Approve a pending application and add it to vaalilakana."""
+        if application_id not in self.pending_applications:
+            return None
+
+        application = self.pending_applications[application_id]
+        division = application["division"]
+        position = application["position"]
+        applicant = application["applicant"]
+
+        # Add admin_approved field
+        applicant["admin_approved"] = True
+
+        # Add to vaalilakana
+        self.add_applicant(division, position, applicant)
+
+        # Remove from pending
+        self.remove_pending_application(application_id)
+
+        return application

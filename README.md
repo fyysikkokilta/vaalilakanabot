@@ -5,6 +5,7 @@ Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista 
 ## Ominaisuudet
 
 - Kiltalaiset voivat hakea sekä vaaleilla valittaviin että ei-vaaleilla valittaviin virkoihin.
+- **Admin-hyväksyntä**: Hakemukset vaaleilla valittaviin virkoihin (hallitus ja valittavat toimihenkilöt) vaativat admin-hyväksynnän ennen lisäämistä vaalilakanaan.
 - Ilmoittaa chatteissa, joihin botti on lisätty, aina kun fiirumille on tullut uusi postaus.
 - Botin admin-käyttäjä voi ylläpitää sähköistä vaalilakanaa.
 - Jauhistelu
@@ -93,6 +94,22 @@ Admin-chatissa seuraavat komennot ovat käytössä:
 - `/muokkaa_roolia` Lisää uuden roolin tai muokkaa olevassa olevaa roolia vaalilakanassa.
 - `/poista_rooli` Poistaa roolin vaalilakanasta.
 - `/vie_tiedot` Luo hakijoiden tiedoista CSV-tiedoston.
+- `/odottavat` Näyttää kaikki odottavat hakemukset, jotka vaativat admin-hyväksynnän.
+
+### Admin-hyväksyntä
+
+Hakemukset vaaleilla valittaviin virkoihin (määritellään `BOARD` ja `ELECTED_OFFICIALS` ympäristömuuttujissa) vaativat admin-hyväksynnän:
+
+1. Kun käyttäjä lähettää hakemuksen vaaleilla valittavaan virkaan, botti lähettää hyväksyntäpyynnön admin-chatin.
+2. Admin-chatissa näkyy hakemuksen tiedot ja kaksi painiketta: "✅ Hyväksy" ja "❌ Hylkää".
+3. Kun admin hyväksyy hakemuksen:
+   - Hakemus lisätään vaalilakanaan
+   - Hakijalle lähetetään hyväksyntäilmoitus
+   - Kanaville lähetetään tavallinen ilmoitus uudesta nimestä vaalilakanassa
+4. Kun admin hylkää hakemuksen:
+   - Hakemus poistetaan odottavien listalta
+   - Hakijalle lähetetään hylkäysilmoitus
+5. Käyttäjä ei voi lähettää uutta hakemusta samaan virkaan niin kauan kun edellinen hakemus odottaa käsittelyä.
 
 ## Lisätietoa
 

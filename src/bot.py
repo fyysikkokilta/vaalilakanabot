@@ -53,6 +53,7 @@ from .application_handlers import (
     cancel,
 )
 from .announcements import parse_fiirumi_posts, announce_new_responses
+from .admin_approval import handle_admin_approval, list_pending_applications
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -130,6 +131,11 @@ async def post_init(app: Application, data_manager: DataManager):
     app.add_handler(
         CommandHandler("vie_tiedot", create_wrapper(export_data, data_manager))
     )
+    app.add_handler(
+        CommandHandler(
+            "odottavat", create_wrapper(list_pending_applications, data_manager)
+        )
+    )
 
     # User command handlers
     app.add_handler(
@@ -143,6 +149,14 @@ async def post_init(app: Application, data_manager: DataManager):
     app.add_handler(CommandHandler("jauho", create_wrapper(jauho, data_manager)))
     app.add_handler(CommandHandler("lauh", create_wrapper(lauh, data_manager)))
     app.add_handler(CommandHandler("mauh", create_wrapper(mauh, data_manager)))
+
+    # Admin approval callback handler
+    app.add_handler(
+        CallbackQueryHandler(
+            create_wrapper(handle_admin_approval, data_manager),
+            pattern="^(approve_|reject_)",
+        )
+    )
 
     # Application conversation handler
     apply_handler = ConversationHandler(
