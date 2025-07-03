@@ -1,14 +1,14 @@
 # Vaalilakanabot
 
-Telegram-botti, joka vaalien aikaan ylläpitää listausta ehdolle asettuneista henkilöistä ja ilmoittaa uusista postauksista killan Discourse-pohjaisella keskustelufoorumilla [Φrumilla](https://fiirumi.fyysikkokilta.fi).
+A Telegram bot that maintains a listing of candidates during elections and announces new posts on the guild's Discourse-based discussion forum [Φrumi](https://fiirumi.fyysikkokilta.fi).
 
-## Ominaisuudet
+## Features
 
-- Kiltalaiset voivat hakea sekä vaaleilla valittaviin että ei-vaaleilla valittaviin virkoihin.
-- **Admin-hyväksyntä**: Hakemukset vaaleilla valittaviin virkoihin (hallitus ja valittavat toimihenkilöt) vaativat admin-hyväksynnän ennen lisäämistä vaalilakanaan.
-- Ilmoittaa chatteissa, joihin botti on lisätty, aina kun fiirumille on tullut uusi postaus.
-- Botin admin-käyttäjä voi ylläpitää sähköistä vaalilakanaa.
-- Jauhistelu
+- Guild members can apply for both elected and non-elected positions.
+- **Admin approval**: Applications for elected positions (board and elected officials) require admin approval before being added to the election sheet.
+- Announces in chats where the bot has been added whenever there's a new post on Fiirumi.
+- The bot's admin user can maintain the electronic election sheet.
+- Jauhis fun
 
 ## CI/CD Pipeline
 
@@ -23,20 +23,21 @@ This project uses GitHub Actions for continuous integration and deployment:
 - **Development**: Use `docker-compose up` (uses local build via override file)
 - **Production**: Use `docker-compose -f docker-compose.prod.yml up` (uses pre-built image)
 
-## Käyttöönotto
+## Setup
 
-- asenna `python-telegram-bot`-kirjasto (versio >=21) ja muut tarvittavat kirjastot.
-- lisää Telegram-bot Bot Father -botilla ja ota botin token talteen.
-- Luo Discourse api-avain bottia varten.
-- Luo admin Telegram-ryhmä ja ota sen id talteen esimerkiksi botilla `@RawDataBot`.
-- Luo vaalilakana Fiirumille.
-  - Viestissä, jossa vaalilakana sijaitsee ei saa olla muuta tekstiä kuin itse vaalilakana.
-  - Jaoksien nimet tulee olla ISOLLA kirjoitettuna ja rivi saa sisältää vain suomenkielisen ja englanninkielisen käännöksen /-merkillä jaettuna.
-  - Roolirivit tulee olla muodossa `{suomenkielinen nimi} / {englanninkielinen nimi} ({valittavien määrä}) {haun deadline (muodossa xx.yy.}`
-    - Kaikki muut paitsi suomenkielinen nimi ovat vapaaehtoisia, mutta järjestyksen tulee olla juuri tämä.
-- Luo `bot.env` esimerkkitiedoston `bot.env.example` mukaisesti.
+- Install the `python-telegram-bot` library (version >=21) and other required libraries.
+- Create a Telegram bot with Bot Father and save the bot token.
+- Create a Discourse API key for the bot.
+- Create an admin Telegram group and save its ID, for example using the `@RawDataBot`.
+- Create the election sheet for Fiirumi.
+  - The message containing the election sheet must not have any text other than the election sheet itself.
+  - Division names must be written in ALL CAPS, and each line should contain only the Finnish and English translations separated by a `/`.
+  - Role lines must follow the format:  
+    `{Finnish name} / {English name} ({number of positions}) {application deadline (in the format xx.yy.)}`
+    - Everything except the Finnish name is optional, but the order must be exactly as specified.
+- Create `bot.env` according to the example file `bot.env.example`.
 - `$ python vaalilakanabot.py`
-- lisää botti relevantteihin keskusteluryhmiin.
+- Add the bot to relevant discussion groups.
 
 ## Running the bot with Docker
 
@@ -72,54 +73,54 @@ docker-compose -f docker-compose.prod.yml up
 ./update-deployment.sh
 ```
 
-## Komennot
+## Commands
 
-Botti tukee seuraavia komentoja:
+The bot supports the following commands:
 
-- `/start` Rekisteröi ryhmän botin tiedotuskanavaksi ja ryhmää saa botilta ilmoituksia.
-- `/lakana` Näyttää vaalien ehdokastilanteen (suomeksi).
-- `/sheet` Näyttää vaalien ehdokastilanteen (englanniksi).
-- `/jauhis` Näyttää vaaliaiheisen kuvan.
-- `/jauh` Näyttää vaaliaiheisen kuvan.
-- `/jauho` Näyttää vaaliaiheisen kuvan.
-- `/lauh` Näyttää vaaliaiheisen kuvan.
-- `/mauh` Näyttää vaaliaiheisen kuvan.
-- `/hae` Aloittaa hakemuslomakkeen täyttämisen suomeksi.
-- `/apply` Aloittaa hakemuslomakkeen täyttämisen englanniksi.
-- `/help` Näyttää englanninkielisen ohjeen.
-- `/apua` Näyttää suomenkielisen ohjeen.
+- `/start` Registers the group as the bot's announcement channel and the group receives notifications from the bot.
+- `/lakana` Shows the current election candidate status (in Finnish).
+- `/sheet` Shows the current election candidate status (in English).
+- `/jauhis` Shows an election-themed image.
+- `/jauh` Shows an election-themed image.
+- `/jauho` Shows an election-themed image.
+- `/lauh` Shows an election-themed image.
+- `/mauh` Shows an election-themed image.
+- `/hae` Starts filling out the application form in Finnish.
+- `/apply` Starts filling out the application form in English.
+- `/help` Shows the English help guide.
+- `/apua` Shows the Finnish help guide.
 
-Admin-chatissa seuraavat komennot ovat käytössä:
+The following commands are available in the admin chat:
 
-- `/remove` Poistaa ehdokkaan lakanasta. (toimii myös ei-vaaleilla valittavaan virkoihin; hakijan voi siis poistaa botin kautta)
-- `/add_fiirumi` Lisää ehdokkaan fiirumipostauksen vaalilakanaan.
-- `/remove_fiirumi` Poistaa vaalilakanaan lisätyn fiirumipostauksen.
-- `/selected` Merkitsee vaalilakanassa ehdokkaan valituksi virkaan. (toimii myös ei-vaaleilla valittavaan virkoihin)
-- `/edit_or_add_new_role` Lisää uuden roolin tai muokkaa olevassa olevaa roolia vaalilakanassa.
-- `/remove_role` Poistaa roolin vaalilakanasta.
-- `/export_data` Luo hakijoiden tiedoista CSV-tiedoston.
-- `/pending` Näyttää kaikki odottavat hakemukset, jotka vaativat admin-hyväksynnän.
-- `/admin_help` Näyttää admin-komentojen ohjeen.
+- `/remove` Removes a candidate from the sheet. (also works for non-elected positions; candidates can be removed through the bot)
+- `/add_fiirumi` Adds a candidate's Fiirumi post to the election sheet.
+- `/remove_fiirumi` Removes a Fiirumi post that has been added to the election sheet.
+- `/selected` Marks a candidate as selected for a position in the election sheet. (also works for non-elected positions)
+- `/edit_or_add_new_role` Adds a new role or modifies an existing role in the election sheet.
+- `/remove_role` Removes a role from the election sheet.
+- `/export_data` Creates a CSV file from applicant data.
+- `/pending` Shows all pending applications that require admin approval.
+- `/admin_help` Shows the admin commands help guide.
 
-**Huomio:** Admin-komennot tukevat sekä suomen- että englanninkielisiä jaos- ja roolinimiä. Jos nimiä ei löydy, botti näyttää saatavilla olevat vaihtoehdot.
+**Note:** Admin commands support both Finnish and English division and role names. If names are not found, the bot will show available options.
 
-### Admin-hyväksyntä
+### Admin Approval
 
-Hakemukset vaaleilla valittaviin virkoihin (määritellään `BOARD` ja `ELECTED_OFFICIALS` ympäristömuuttujissa) vaativat admin-hyväksynnän:
+Applications for elected positions (defined in `BOARD` and `ELECTED_OFFICIALS` environment variables) require admin approval:
 
-1. Kun käyttäjä lähettää hakemuksen vaaleilla valittavaan virkaan, botti lähettää hyväksyntäpyynnön admin-chatin.
-2. Admin-chatissa näkyy hakemuksen tiedot ja kaksi painiketta: "✅ Approve" ja "❌ Reject".
-3. Kun admin hyväksyy hakemuksen:
-   - Hakemus lisätään vaalilakanaan
-   - Hakijalle lähetetään hyväksyntäilmoitus
-   - Kanaville lähetetään tavallinen ilmoitus uudesta nimestä vaalilakanassa
-4. Kun admin hylkää hakemuksen:
-   - Hakemus poistetaan odottavien listalta
-   - Hakijalle lähetetään hylkäysilmoitus
-5. Käyttäjä ei voi lähettää uutta hakemusta samaan virkaan niin kauan kun edellinen hakemus odottaa käsittelyä.
+1. When a user submits an application for an elected position, the bot sends an approval request to the admin chat.
+2. The admin chat shows the application details and two buttons: "✅ Approve" and "❌ Reject".
+3. When an admin approves the application:
+   - The application is added to the election sheet
+   - An approval notification is sent to the applicant
+   - Channels receive a regular notification about the new name in the election sheet
+4. When an admin rejects the application:
+   - The application is removed from the pending list
+   - A rejection notification is sent to the applicant
+5. The user cannot submit a new application to the same position as long as the previous application is pending.
 
-## Lisätietoa
+## Additional Information
 
-Lisää telegram-boteista voi lukea esimerkiksi [Kvantti I/19 s.22-25](https://kvantti.ayy.fi/blog/wp-content/uploads/2019/03/kvantti-19-1-nettiin.pdf).
+For more information about Telegram bots, you can read for example [Kvantti I/19 p.22-25](https://kvantti.ayy.fi/blog/wp-content/uploads/2019/03/kvantti-19-1-nettiin.pdf).
 
-Botin tekivät [Einari Tuukkanen](https://github.com/EinariTuukkanen) ja Uula Ollila.
+The bot was created by [Einari Tuukkanen](https://github.com/EinariTuukkanen) and Uula Ollila.
