@@ -1,9 +1,11 @@
-"""Admin approval handlers for elected role applications."""
+"""Admin approval functionality for applications."""
 
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from .admin_commands import is_admin_chat
 from .config import ADMIN_CHAT_ID, BOARD, ELECTED_OFFICIALS
 from .announcements import announce_to_channels
 
@@ -95,7 +97,7 @@ async def handle_admin_approval(
     await query.answer()
 
     # Check if this is from admin chat
-    if str(query.message.chat.id) != str(ADMIN_CHAT_ID):
+    if not is_admin_chat(query.message.chat.id):
         await query.answer("This action is for admins only.", show_alert=True)
         return
 
@@ -200,8 +202,7 @@ async def list_pending_applications(
     update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
 ):
     """List all pending applications for admin."""
-    chat_id = update.message.chat.id
-    if str(chat_id) != str(ADMIN_CHAT_ID):
+    if not is_admin_chat(update.message.chat.id):
         return
 
     pending = data_manager.pending_applications
