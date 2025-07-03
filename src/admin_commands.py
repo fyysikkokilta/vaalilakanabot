@@ -21,28 +21,28 @@ async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE, data_ma
 🔧 <b>Vaalilakanabot - Admin Commands</b>
 
 <b>Applicant Management:</b>
-• /poista &lt;position&gt;, &lt;name&gt; - Remove applicant from position
-• /valittu &lt;position&gt;, &lt;name&gt; - Mark applicant as selected
-• /odottavat - Show pending applications
+• /remove &lt;position&gt;, &lt;name&gt; - Remove applicant from position
+• /selected &lt;position&gt;, &lt;name&gt; - Mark applicant as selected
+• /pending - Show pending applications
 
 <b>Fiirumi Link Management:</b>
-• /lisaa_fiirumi &lt;position&gt;, &lt;name&gt;, &lt;thread_id&gt; - Add Fiirumi link to applicant
-• /poista_fiirumi &lt;position&gt;, &lt;name&gt; - Remove Fiirumi link from applicant
+• /add_fiirumi &lt;position&gt;, &lt;name&gt;, &lt;thread_id&gt; - Add Fiirumi link to applicant
+• /remove_fiirumi &lt;position&gt;, &lt;name&gt; - Remove Fiirumi link from applicant
 
 <b>Role Management:</b>
-• /muokkaa_roolia &lt;division&gt;, &lt;role&gt;, &lt;role_en&gt;, &lt;applicant_count&gt;, &lt;deadline&gt; - Edit or add role
-• /poista_rooli &lt;division&gt;, &lt;role&gt; - Remove role
+• /edit_or_add_new_role &lt;division&gt;, &lt;role&gt;, &lt;role_en&gt;, &lt;applicant_count&gt;, &lt;deadline&gt; - Edit or add role
+• /remove_role &lt;division&gt;, &lt;role&gt; - Remove role
 
 <b>Data Export:</b>
-• /vie_tiedot - Export all applicant data as CSV file
+• /export_data - Export all applicant data as CSV file
 
 <b>Examples:</b>
-• /poista Puheenjohtaja, Maija Meikäläinen
-• /valittu Varapuheenjohtaja, Pekka Päällikkö
-• /lisaa_fiirumi Puheenjohtaja, Maija Meikäläinen, 12345
-• /muokkaa_roolia MUUT TOIMIHENKILÖT, Uusi rooli, New role, 2, 15.12.
-• /poista_rooli MUUT TOIMIHENKILÖT, Uusi rooli
-• /vie_tiedot Hovimestari
+• /remove Puheenjohtaja, Maija Meikäläinen
+• /selected Varapuheenjohtaja, Pekka Päällikkö
+• /add_fiirumi Puheenjohtaja, Maija Meikäläinen, 12345
+• /edit_or_add_new_role MUUT TOIMIHENKILÖT, Uusi rooli, New role, 2, 15.12.
+• /remove_role MUUT TOIMIHENKILÖT, Uusi rooli
+• /export_data Hovimestari
 
 <b>Important Notes:</b>
 • All commands work only in admin chat
@@ -62,7 +62,7 @@ async def remove_applicant(
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
-            text = update.message.text.replace("/poista", "").strip()
+            text = update.message.text.replace("/remove", "").strip()
             params = text.split(",")
 
             try:
@@ -70,21 +70,21 @@ async def remove_applicant(
                 name = params[1].strip()
             except Exception as e:
                 await update.message.reply_text(
-                    "Virheelliset parametrit - /poista <virka>, <nimi>"
+                    "Invalid parameters - /remove <position>, <name>"
                 )
                 raise ValueError("Invalid parameters") from e
 
             if position not in [position["fi"] for position in data_manager.positions]:
-                await update.message.reply_text(f"Tunnistamaton virka: {position}")
+                await update.message.reply_text(f"Unknown position: {position}")
                 raise ValueError(f"Unknown position {position}")
 
             division = data_manager.find_division_for_position(position)
             if not division:
-                await update.message.reply_text(f"Jaosta ei löytynyt: {position}")
+                await update.message.reply_text(f"Division not found: {position}")
                 return
 
             data_manager.remove_applicant(division, position, name)
-            await update.message.reply_text(f"Poistettu:\n{position}: {name}")
+            await update.message.reply_text(f"Removed:\n{position}: {name}")
     except Exception as e:
         logger.error(e)
 
@@ -96,7 +96,7 @@ async def add_fiirumi_to_applicant(
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
-            text = update.message.text.replace("/lisaa_fiirumi", "").strip()
+            text = update.message.text.replace("/add_fiirumi", "").strip()
             params = text.split(",")
 
             try:
@@ -105,23 +105,23 @@ async def add_fiirumi_to_applicant(
                 thread_id = params[2].strip()
             except Exception as e:
                 await update.message.reply_text(
-                    "Virheelliset parametrit - /lisaa_fiirumi <virka>, <nimi>, <thread id>",
+                    "Invalid parameters - /add_fiirumi <position>, <name>, <thread_id>",
                 )
                 raise ValueError("Invalid parameters") from e
 
             if position not in BOARD + ELECTED_OFFICIALS:
-                await update.message.reply_text(f"Tunnistamaton virka: {position}")
+                await update.message.reply_text(f"Unknown position: {position}")
                 raise ValueError(f"Unknown position {position}")
 
             if thread_id not in data_manager.fiirumi_posts:
                 await update.message.reply_text(
-                    f"Fiirumi-postausta ei löytynyt annetulla id:llä: {thread_id}",
+                    f"Fiirumi post not found with given id: {thread_id}",
                 )
                 raise ValueError(f"Unknown thread {thread_id}")
 
             division = data_manager.find_division_for_position(position)
             if not division:
-                await update.message.reply_text(f"Jaosta ei löytynyt: {position}")
+                await update.message.reply_text(f"Division not found: {position}")
                 return
 
             fiirumi = create_fiirumi_link(
@@ -131,7 +131,7 @@ async def add_fiirumi_to_applicant(
             data_manager.set_applicant_fiirumi(division, position, name, fiirumi)
 
             await update.message.reply_html(
-                f'Lisätty Fiirumi:\n{position}: <a href="{fiirumi}">{name}</a>',
+                f'Added Fiirumi:\n{position}: <a href="{fiirumi}">{name}</a>',
             )
     except Exception as e:
         logger.error(e)
@@ -144,11 +144,11 @@ async def unassociate_fiirumi(
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
-            # Converts /poista_fiirumi Puheenjohtaja, Fysisti kiltalainen
+            # Converts /remove_fiirumi Puheenjohtaja, Fysisti kiltalainen
             # to ["Puheenjohtaja", "Fysisti kiltalainen"]
             params = [
                 arg.strip()
-                for arg in update.message.text.replace("/poista_fiirumi", "")
+                for arg in update.message.text.replace("/remove_fiirumi", "")
                 .strip()
                 .split(",")
             ]
@@ -158,24 +158,24 @@ async def unassociate_fiirumi(
             except Exception as e:
                 logger.error(e)
                 await update.message.reply_text(
-                    "Virheelliset parametrit - /poista_fiirumi <virka>, <nimi>"
+                    "Invalid parameters - /remove_fiirumi <position>, <name>"
                 )
                 return
 
             if position not in BOARD + ELECTED_OFFICIALS:
                 await update.message.reply_text(
-                    "Virheelliset parametrit, roolia ei löytynyt"
+                    "Invalid parameters, position not found"
                 )
                 return
 
             # Try finding the dict with matching applicant name from vaalilakana
             division = data_manager.find_division_for_position(position)
             if not division:
-                await update.message.reply_text(f"Jaosta ei löytynyt: {position}")
+                await update.message.reply_text(f"Division not found: {position}")
                 return
 
             data_manager.set_applicant_fiirumi(division, position, name, "")
-            await update.message.reply_text(f"Fiirumi linkki poistettu:\n{name}")
+            await update.message.reply_text(f"Fiirumi link removed:\n{name}")
         else:
             # Not admin chat
             pass
@@ -191,7 +191,7 @@ async def add_selected_tag(
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
-            text = update.message.text.replace("/valittu", "").strip()
+            text = update.message.text.replace("/selected", "").strip()
             params = text.split(",")
 
             try:
@@ -199,21 +199,21 @@ async def add_selected_tag(
                 name = params[1].strip()
             except Exception as e:
                 await update.message.reply_text(
-                    "Virheelliset parametrit - /valittu <virka>, <nimi>"
+                    "Invalid parameters - /selected <position>, <name>"
                 )
                 raise ValueError from e
 
             if position not in [position["fi"] for position in data_manager.positions]:
-                await update.message.reply_text(f"Tunnistamaton virka: {position}")
+                await update.message.reply_text(f"Unknown position: {position}")
                 raise ValueError(f"Unknown position {position}")
 
             division = data_manager.find_division_for_position(position)
             if not division:
-                await update.message.reply_text(f"Jaosta ei löytynyt: {position}")
+                await update.message.reply_text(f"Division not found: {position}")
                 return
 
             data_manager.set_applicant_selected(division, position, name)
-            await update.message.reply_text(f"Hakija valittu:\n{position}: {name}")
+            await update.message.reply_text(f"Applicant selected:\n{position}: {name}")
     except Exception as e:
         logger.error(e)
 
@@ -225,14 +225,14 @@ async def edit_or_add_new_role(
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
-            text = update.message.text.replace("/muokkaa_roolia", "").strip()
+            text = update.message.text.replace("/edit_or_add_new_role", "").strip()
 
             # Check if any parameters were provided
             if not text:
                 await update.message.reply_text(
-                    "Virheelliset parametrit - "
-                    "/muokkaa_roolia <jaos>, <rooli>, <rooli_en>, <hakijamäärä>, <hakuaika>\n\n"
-                    "Esimerkki: /muokkaa_roolia MUUT TOIMIHENKILÖT, Uusi rooli, New role, 2, 15.12."
+                    "Invalid parameters - "
+                    "/edit_or_add_new_role <division>, <role>, <role_en>, <applicant_count>, <deadline>\n\n"
+                    "Example: /edit_or_add_new_role MUUT TOIMIHENKILÖT, Uusi rooli, New role, 2, 15.12."
                 )
                 return
 
@@ -241,8 +241,8 @@ async def edit_or_add_new_role(
             # Validate minimum required parameters
             if len(params) < 2:
                 await update.message.reply_text(
-                    "Virheelliset parametrit - tarvitaan vähintään jaos ja rooli\n"
-                    "/muokkaa_roolia <jaos>, <rooli>, <rooli_en>, <hakijamäärä>, <hakuaika>"
+                    "Invalid parameters - need at least division and role\n"
+                    "/edit_or_add_new_role <division>, <role>, <role_en>, <applicant_count>, <deadline>"
                 )
                 return
 
@@ -260,23 +260,23 @@ async def edit_or_add_new_role(
                 )
             except Exception as e:
                 await update.message.reply_text(
-                    "Virheelliset parametrit - "
-                    "/muokkaa_roolia <jaos>, <rooli>, <rooli_en>, <hakijamäärä>, <hakuaika>"
+                    "Invalid parameters - "
+                    "/edit_or_add_new_role <division>, <role>, <role_en>, <applicant_count>, <deadline>"
                 )
                 raise ValueError("Invalid parameters") from e
 
             # Validate division exists
             if division not in [division["fi"] for division in data_manager.divisions]:
                 await update.message.reply_text(
-                    f"Tunnistamaton jaos: {division}\n\n"
-                    f"Käytettävissä olevat jaokset:\n"
+                    f"Unknown division: {division}\n\n"
+                    f"Available divisions:\n"
                     + "\n".join([f"• {div['fi']}" for div in data_manager.divisions])
                 )
                 return
 
             # Validate role name is not empty
             if not role:
-                await update.message.reply_text("Roolin nimi ei voi olla tyhjä.")
+                await update.message.reply_text("Role name cannot be empty.")
                 return
 
             # Validate amount format if provided
@@ -286,8 +286,8 @@ async def edit_or_add_new_role(
 
                 if not re.match(r"^(\d+(-\d+)?|n)$", amount):
                     await update.message.reply_text(
-                        f"Virheellinen hakijamäärä: {amount}\n"
-                        "Sallitut muodot: '1', '2', '1-2', 'n', '13-15'"
+                        f"Invalid applicant count: {amount}\n"
+                        "Allowed formats: '1', '2', '1-2', 'n', '13-15'"
                     )
                     return
 
@@ -298,8 +298,8 @@ async def edit_or_add_new_role(
 
                 if not re.match(r"^\d{1,2}\.\d{1,2}\.$", application_dl):
                     await update.message.reply_text(
-                        f"Virheellinen hakuaika: {application_dl}\n"
-                        "Sallittu muoto: 'DD.MM.' (esim. '15.12.', '3.11.')"
+                        f"Invalid deadline: {application_dl}\n"
+                        "Allowed format: 'DD.MM.' (e.g., '15.12.', '3.11.')"
                     )
                     return
 
@@ -328,11 +328,11 @@ async def edit_or_add_new_role(
                     "data/vaalilakana.json", data_manager.vaalilakana
                 )
                 await update.message.reply_text(
-                    f"✅ Lisätty uusi rooli:\n"
-                    f"<b>Jaos:</b> {division}\n"
-                    f"<b>Rooli:</b> {role}\n"
-                    f"<b>Rooli (EN):</b> {role_en if role_en else role}\n"
-                    f"<b>Hakuaika:</b> {application_dl if application_dl else 'ei määritelty'}",
+                    f"✅ Added new role:\n"
+                    f"<b>Division:</b> {division}\n"
+                    f"<b>Role:</b> {role}\n"
+                    f"<b>Role (EN):</b> {role_en if role_en else role}\n"
+                    f"<b>Deadline:</b> {application_dl if application_dl else 'not set'}",
                     parse_mode="HTML",
                 )
             else:
@@ -354,19 +354,19 @@ async def edit_or_add_new_role(
                     "data/vaalilakana.json", data_manager.vaalilakana
                 )
                 await update.message.reply_text(
-                    f"✅ Päivitetty rooli:\n"
-                    f"<b>Jaos:</b> {division}\n"
-                    f"<b>Rooli:</b> {role}\n"
-                    f"<b>Rooli (EN):</b> {role_en if role_en else role}\n"
-                    f"<b>Hakijamäärä:</b> {amount if amount else 'ei määritelty'}\n"
-                    f"<b>Hakuaika:</b> {application_dl if application_dl else 'ei määritelty'}\n"
-                    f"<b>Hakijoita:</b> {len(existing_applicants)}",
+                    f"✅ Updated role:\n"
+                    f"<b>Division:</b> {division}\n"
+                    f"<b>Role:</b> {role}\n"
+                    f"<b>Role (EN):</b> {role_en if role_en else role}\n"
+                    f"<b>Applicant count:</b> {amount if amount else 'not set'}\n"
+                    f"<b>Deadline:</b> {application_dl if application_dl else 'not set'}\n"
+                    f"<b>Applicants:</b> {len(existing_applicants)}",
                     parse_mode="HTML",
                 )
     except Exception as e:
         logger.error(f"Error in edit_or_add_new_role: {e}")
         await update.message.reply_text(
-            "Virhe roolin muokkaamisessa. Tarkista parametrit ja yritä uudelleen."
+            "Error in role editing. Check parameters and try again."
         )
 
 
@@ -375,7 +375,7 @@ async def remove_role(update: Update, context: ContextTypes.DEFAULT_TYPE, data_m
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
-            text = update.message.text.replace("/poista_rooli", "").strip()
+            text = update.message.text.replace("/remove_role", "").strip()
             params = text.split(",")
 
             try:
@@ -383,25 +383,25 @@ async def remove_role(update: Update, context: ContextTypes.DEFAULT_TYPE, data_m
                 role = params[1].strip()
             except Exception as e:
                 await update.message.reply_text(
-                    "Virheelliset parametrit - /poista_rooli <jaos>, <rooli>"
+                    "Invalid parameters - /remove_role <division>, <role>"
                 )
                 raise ValueError("Invalid parameters") from e
 
             if division not in [division["fi"] for division in data_manager.divisions]:
-                await update.message.reply_text(f"Tunnistamaton jaos: {division}")
+                await update.message.reply_text(f"Unknown division: {division}")
                 raise ValueError(f"Unknown division {division}")
 
             if role not in [
                 role["title"]
                 for role in data_manager.vaalilakana[division]["roles"].values()
             ]:
-                await update.message.reply_text(f"Tunnistamaton virka: {role}")
+                await update.message.reply_text(f"Unknown position: {role}")
                 raise ValueError(f"Unknown position {role}")
 
             del data_manager.vaalilakana[division]["roles"][role]
             data_manager.positions.remove({"fi": role, "en": role})
             data_manager.save_data("data/vaalilakana.json", data_manager.vaalilakana)
-            await update.message.reply_text(f"Poistettu:\n{division}: {role}")
+            await update.message.reply_text(f"Removed:\n{division}: {role}")
     except Exception as e:
         logger.error(e)
 
@@ -412,7 +412,7 @@ async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE, data_m
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
-            text = update.message.text.replace("/vie_tiedot", "").strip()
+            text = update.message.text.replace("/export_data", "").strip()
             params = text.split(",")
 
             output = StringIO()
@@ -421,7 +421,7 @@ async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE, data_m
             if len(text) > 0:
                 role = params[0].strip()
                 if role not in [position["fi"] for position in data_manager.positions]:
-                    await update.message.reply_text(f"Tunnistamaton virka: {role}")
+                    await update.message.reply_text(f"Unknown position: {role}")
                     raise ValueError(f"Unknown position {role}")
 
                 division = data_manager.find_division_for_position(role)

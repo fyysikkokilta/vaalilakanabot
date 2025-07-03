@@ -84,24 +84,27 @@ Botti tukee seuraavia komentoja:
 - `/lauh` Näyttää vaaliaiheisen kuvan.
 - `/mauh` Näyttää vaaliaiheisen kuvan.
 - `/hae` Aloittaa hakemuslomakkeen täyttämisen.
+- `/help` Näyttää englanninkielisen ohjeen.
+- `/apua` Näyttää suomenkielisen ohjeen.
 
 Admin-chatissa seuraavat komennot ovat käytössä:
 
-- `/poista` Poistaa ehdokkaan lakanasta. (toimii myös ei-vaaleilla valittavaan virkoihin; hakijan voi siis poistaa botin kautta)
-- `/lisaa_fiirumi` Lisää ehdokkaan fiirumipostauksen vaalilakanaan.
-- `/poista_fiirumi` Poistaa vaalilakanaan lisätyn fiirumipostauksen.
-- `/valittu` Merkitsee vaalilakanassa ehdokkaan valituksi virkaan. (toimii myös ei-vaaleilla valittavaan virkoihin)
-- `/muokkaa_roolia` Lisää uuden roolin tai muokkaa olevassa olevaa roolia vaalilakanassa.
-- `/poista_rooli` Poistaa roolin vaalilakanasta.
-- `/vie_tiedot` Luo hakijoiden tiedoista CSV-tiedoston.
-- `/odottavat` Näyttää kaikki odottavat hakemukset, jotka vaativat admin-hyväksynnän.
+- `/remove` Poistaa ehdokkaan lakanasta. (toimii myös ei-vaaleilla valittavaan virkoihin; hakijan voi siis poistaa botin kautta)
+- `/add_fiirumi` Lisää ehdokkaan fiirumipostauksen vaalilakanaan.
+- `/remove_fiirumi` Poistaa vaalilakanaan lisätyn fiirumipostauksen.
+- `/selected` Merkitsee vaalilakanassa ehdokkaan valituksi virkaan. (toimii myös ei-vaaleilla valittavaan virkoihin)
+- `/edit_or_add_new_role` Lisää uuden roolin tai muokkaa olevassa olevaa roolia vaalilakanassa.
+- `/remove_role` Poistaa roolin vaalilakanasta.
+- `/export_data` Luo hakijoiden tiedoista CSV-tiedoston.
+- `/pending` Näyttää kaikki odottavat hakemukset, jotka vaativat admin-hyväksynnän.
+- `/admin_help` Näyttää admin-komentojen ohjeen.
 
 ### Admin-hyväksyntä
 
 Hakemukset vaaleilla valittaviin virkoihin (määritellään `BOARD` ja `ELECTED_OFFICIALS` ympäristömuuttujissa) vaativat admin-hyväksynnän:
 
 1. Kun käyttäjä lähettää hakemuksen vaaleilla valittavaan virkaan, botti lähettää hyväksyntäpyynnön admin-chatin.
-2. Admin-chatissa näkyy hakemuksen tiedot ja kaksi painiketta: "✅ Hyväksy" ja "❌ Hylkää".
+2. Admin-chatissa näkyy hakemuksen tiedot ja kaksi painiketta: "✅ Approve" ja "❌ Reject".
 3. Kun admin hyväksyy hakemuksen:
    - Hakemus lisätään vaalilakanaan
    - Hakijalle lähetetään hyväksyntäilmoitus

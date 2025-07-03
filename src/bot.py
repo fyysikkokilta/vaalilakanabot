@@ -109,35 +109,35 @@ async def post_init(app: Application, data_manager: DataManager):
 
     # Admin command handlers
     app.add_handler(
-        CommandHandler("poista", create_wrapper(remove_applicant, data_manager))
+        CommandHandler("remove", create_wrapper(remove_applicant, data_manager))
     )
     app.add_handler(
         CommandHandler(
-            "lisaa_fiirumi", create_wrapper(add_fiirumi_to_applicant, data_manager)
+            "add_fiirumi", create_wrapper(add_fiirumi_to_applicant, data_manager)
         )
     )
     app.add_handler(
         CommandHandler(
-            "poista_fiirumi", create_wrapper(unassociate_fiirumi, data_manager)
+            "remove_fiirumi", create_wrapper(unassociate_fiirumi, data_manager)
         )
     )
     app.add_handler(
-        CommandHandler("valittu", create_wrapper(add_selected_tag, data_manager))
+        CommandHandler("selected", create_wrapper(add_selected_tag, data_manager))
     )
     app.add_handler(
         CommandHandler(
-            "muokkaa_roolia", create_wrapper(edit_or_add_new_role, data_manager)
+            "edit_or_add_new_role", create_wrapper(edit_or_add_new_role, data_manager)
         )
     )
     app.add_handler(
-        CommandHandler("poista_rooli", create_wrapper(remove_role, data_manager))
+        CommandHandler("remove_role", create_wrapper(remove_role, data_manager))
     )
     app.add_handler(
-        CommandHandler("vie_tiedot", create_wrapper(export_data, data_manager))
+        CommandHandler("export_data", create_wrapper(export_data, data_manager))
     )
     app.add_handler(
         CommandHandler(
-            "odottavat", create_wrapper(list_pending_applications, data_manager)
+            "pending", create_wrapper(list_pending_applications, data_manager)
         )
     )
     app.add_handler(

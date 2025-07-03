@@ -46,31 +46,31 @@ async def send_admin_approval_request(
 
     # Build the admin message
     text = (
-        f"🗳️ <b>Uusi hakemus vaaleilla valittavaan virkaan</b>\n\n"
-        f"<b>Virka:</b> {position}\n"
-        f"<b>Jaos:</b> {division}\n"
-        f"<b>Nimi:</b> {applicant['name']}\n"
-        f"<b>Sähköposti:</b> {applicant['email']}\n"
+        f"🗳️ <b>New application for elected position</b>\n\n"
+        f"<b>Position:</b> {position}\n"
+        f"<b>Division:</b> {division}\n"
+        f"<b>Name:</b> {applicant['name']}\n"
+        f"<b>Email:</b> {applicant['email']}\n"
         f"<b>Telegram:</b> @{applicant['telegram']}\n\n"
     )
 
     # Add warning if user has other elected applications
     if existing_elected_applications:
         text += (
-            f"⚠️ <b>VAROITUS: Hakijalla on jo muut vaaleilla valittavat hakemukset!</b>\n\n"
-            f"<b>Muut hakemukset:</b>\n"
+            f"⚠️ <b>WARNING: Applicant has other elected position applications!</b>\n\n"
+            f"<b>Other applications:</b>\n"
         )
         for app in existing_elected_applications:
             text += f"• {app}\n"
 
-    text += f"\nHyväksytäänkö hakemus?"
+    text += f"Approve application?"
 
     keyboard = [
         [
             InlineKeyboardButton(
-                "✅ Hyväksy", callback_data=f"approve_{application_id}"
+                "✅ Approve", callback_data=f"approve_{application_id}"
             ),
-            InlineKeyboardButton("❌ Hylkää", callback_data=f"reject_{application_id}"),
+            InlineKeyboardButton("❌ Reject", callback_data=f"reject_{application_id}"),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -96,7 +96,7 @@ async def handle_admin_approval(
 
     # Check if this is from admin chat
     if str(query.message.chat.id) != str(ADMIN_CHAT_ID):
-        await query.answer("Tämä toiminto on vain admineille.", show_alert=True)
+        await query.answer("This action is for admins only.", show_alert=True)
         return
 
     callback_data = query.data
@@ -109,9 +109,7 @@ async def handle_admin_approval(
     application = data_manager.get_pending_application(application_id)
 
     if not application:
-        await query.edit_message_text(
-            "❌ Hakemusta ei löytynyt tai se on jo käsitelty."
-        )
+        await query.edit_message_text("❌ Application not found or already processed.")
         return
 
     applicant = application["applicant"]
@@ -124,10 +122,10 @@ async def handle_admin_approval(
         approved_app = data_manager.approve_application(application_id)
         if approved_app:
             await query.edit_message_text(
-                f"✅ <b>Hakemus hyväksytty!</b>\n\n"
-                f"<b>Virka:</b> {position}\n"
-                f"<b>Hakija:</b> {applicant['name']}\n\n"
-                f"Hakemus on lisätty vaalilakanaan ja ilmoitus lähetetty kanaviin.",
+                f"✅ <b>Application approved!</b>\n\n"
+                f"<b>Position:</b> {position}\n"
+                f"<b>Applicant:</b> {applicant['name']}\n\n"
+                f"Application has been added to the election sheet and notification sent to channels.",
                 parse_mode="HTML",
             )
 
@@ -161,16 +159,16 @@ async def handle_admin_approval(
 
             logger.info(f"Application {application_id} approved by admin")
         else:
-            await query.edit_message_text("❌ Virhe hakemuksen hyväksynnässä.")
+            await query.edit_message_text("❌ Error approving application.")
 
     elif action == "reject":
         # Reject the application
         data_manager.remove_pending_application(application_id)
         await query.edit_message_text(
-            f"❌ <b>Hakemus hylätty!</b>\n\n"
-            f"<b>Virka:</b> {position}\n"
-            f"<b>Hakija:</b> {applicant['name']}\n\n"
-            f"Hakemus on hylätty eikä sitä lisätä vaalilakanaan.",
+            f"❌ <b>Application rejected!</b>\n\n"
+            f"<b>Position:</b> {position}\n"
+            f"<b>Applicant:</b> {applicant['name']}\n\n"
+            f"Application has been rejected and will not be added to the election sheet.",
             parse_mode="HTML",
         )
 
@@ -209,10 +207,10 @@ async def list_pending_applications(
     pending = data_manager.pending_applications
 
     if not pending:
-        await update.message.reply_text("📋 Ei odottavia hakemuksia.")
+        await update.message.reply_text("📋 No pending applications.")
         return
 
-    text = "📋 <b>Odottavat hakemukset:</b>\n\n"
+    text = "📋 <b>Pending applications:</b>\n\n"
 
     for app_id, application in pending.items():
         applicant = application["applicant"]
