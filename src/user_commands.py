@@ -20,7 +20,8 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager)
 • /start - Register channel for announcements
 • /lakana - Show current vaalilakana (Finnish)
 • /sheet - Show current election sheet (English)
-• /hae - Apply for a position (use in private message)
+• /hae - Apply for a position in Finnish (send in private chat)
+• /apply - Apply for a position in English (send in private chat)
 
 <b>Fun Commands:</b>
 • /jauhis - Send jauhis sticker
@@ -30,7 +31,8 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager)
 • /mauh - Send mauh sticker
 
 <b>Additional Information:</b>
-• Use /hae in private message to the bot to apply for a position
+• Use /hae in private message to apply in Finnish
+• Use /apply in private message to apply in English
 • Vaalilakana updates automatically
 • Applications for elected positions require admin approval
 
@@ -54,7 +56,8 @@ async def apua(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager)
 • /start - Rekisteröi kanavan tiedotuskanavaksi
 • /lakana - Näytä nykyinen vaalilakana (suomeksi)
 • /sheet - Näytä nykyinen vaalilakana (englanniksi)
-• /hae - Hae virkaan (käytä yksityisviestissä)
+• /hae - Hae virkaan suomeksi (lähetä yksityisviestinä)
+• /apply - Hae virkaan englanniksi (lähetä yksityisviestinä)
 
 <b>Hauskat komennot:</b>
 • /jauhis - Lähetä jauhis-tarra
@@ -64,7 +67,8 @@ async def apua(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager)
 • /mauh - Lähetä mauh-tarra
 
 <b>Lisätietoja:</b>
-• Käytä /hae yksityisviestissä botille hakeaksesi virkaan
+• Käytä /hae yksityisviestissä hakeaksesi suomeksi
+• Käytä /apply yksityisviestissä hakeaksesi englanniksi
 • Vaalilakana päivittyy automaattisesti
 • Vaaleilla valittujen roolien hakemukset vaativat ylläpidon hyväksynnän
 

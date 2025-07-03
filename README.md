@@ -84,7 +84,8 @@ Botti tukee seuraavia komentoja:
 - `/jauho` Näyttää vaaliaiheisen kuvan.
 - `/lauh` Näyttää vaaliaiheisen kuvan.
 - `/mauh` Näyttää vaaliaiheisen kuvan.
-- `/hae` Aloittaa hakemuslomakkeen täyttämisen.
+- `/hae` Aloittaa hakemuslomakkeen täyttämisen suomeksi.
+- `/apply` Aloittaa hakemuslomakkeen täyttämisen englanniksi.
 - `/help` Näyttää englanninkielisen ohjeen.
 - `/apua` Näyttää suomenkielisen ohjeen.
 

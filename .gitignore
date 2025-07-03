@@ -3,3 +3,5 @@
 #Exclude all but example data
 data/*
 !example*
+
+__pycache__/

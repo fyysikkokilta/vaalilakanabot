@@ -16,7 +16,6 @@ from telegram.ext import (
 
 from .config import (
     TOKEN,
-    SELECTING_LANGUAGE,
     SELECTING_DIVISION,
     SELECTING_ROLE,
     GIVING_NAME,
@@ -48,7 +47,7 @@ from .user_commands import (
 )
 from .application_handlers import (
     hae,
-    select_language,
+    apply,
     select_division,
     select_role,
     enter_name,
@@ -171,24 +170,19 @@ async def post_init(app: Application, data_manager: DataManager):
         )
     )
 
-    # Application conversation handler
-    apply_handler = ConversationHandler(
+    # Application conversation handlers
+    # Finnish application handler
+    hae_handler = ConversationHandler(
         entry_points=[
             CommandHandler(
                 "hae", create_wrapper(hae, data_manager), filters.ChatType.PRIVATE
             )
         ],
         states={
-            SELECTING_LANGUAGE: [
-                CallbackQueryHandler(create_wrapper(select_language, data_manager))
-            ],
             SELECTING_DIVISION: [
                 CallbackQueryHandler(create_wrapper(select_division, data_manager))
             ],
             SELECTING_ROLE: [
-                CallbackQueryHandler(
-                    create_wrapper(select_language, data_manager), pattern="back"
-                ),
                 CallbackQueryHandler(
                     create_wrapper(handle_multiple_application_choice, data_manager),
                     pattern="^(continue_multiple|cancel_multiple)$",
@@ -217,6 +211,47 @@ async def post_init(app: Application, data_manager: DataManager):
         ],
     )
 
+    # English application handler
+    apply_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler(
+                "apply", create_wrapper(apply, data_manager), filters.ChatType.PRIVATE
+            )
+        ],
+        states={
+            SELECTING_DIVISION: [
+                CallbackQueryHandler(create_wrapper(select_division, data_manager))
+            ],
+            SELECTING_ROLE: [
+                CallbackQueryHandler(
+                    create_wrapper(handle_multiple_application_choice, data_manager),
+                    pattern="^(continue_multiple|cancel_multiple)$",
+                ),
+                CallbackQueryHandler(create_wrapper(select_role, data_manager)),
+            ],
+            GIVING_NAME: [
+                MessageHandler(
+                    filters.TEXT & (~filters.COMMAND),
+                    create_wrapper(enter_name, data_manager),
+                )
+            ],
+            GIVING_EMAIL: [
+                MessageHandler(
+                    filters.TEXT & (~filters.COMMAND),
+                    create_wrapper(enter_email, data_manager),
+                )
+            ],
+            CONFIRMING_APPLICATION: [
+                CallbackQueryHandler(create_wrapper(confirm_application, data_manager))
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancel", create_wrapper(cancel, data_manager)),
+            CommandHandler("apply", create_wrapper(apply, data_manager)),
+        ],
+    )
+
+    app.add_handler(hae_handler)
     app.add_handler(apply_handler)
     app.add_error_handler(error)
 

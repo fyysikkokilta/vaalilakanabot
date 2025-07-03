@@ -7,7 +7,6 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler, ContextTypes
 
 from .config import (
-    SELECTING_LANGUAGE,
     SELECTING_DIVISION,
     SELECTING_ROLE,
     GIVING_NAME,
@@ -23,42 +22,32 @@ logger = logging.getLogger("vaalilakanabot")
 
 
 async def hae(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager) -> int:
-    """Apply for a position."""
-    keyboard = [
-        [
-            InlineKeyboardButton("Suomeksi", callback_data="fi"),
-            InlineKeyboardButton("In English", callback_data="en"),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_text(
-        "In which language would you like to apply?", reply_markup=reply_markup
-    )
-    return SELECTING_LANGUAGE
-
-
-async def select_language(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
-) -> int:
-    """Handle language selection."""
-    query = update.callback_query
+    """Apply for a position in Finnish."""
     chat_data = context.chat_data
-    await query.answer()
-    chat_data["is_finnish"] = query.data == "fi" or chat_data["is_finnish"]
+    chat_data["is_finnish"] = True
 
-    localized_divisions, callback_data = data_manager.get_divisions(
-        chat_data["is_finnish"]
-    )
+    localized_divisions, callback_data = data_manager.get_divisions(True)
     keyboard = generate_keyboard(localized_divisions, callback_data)
 
-    text = (
-        "Minkä jaoksen virkaan haet?"
-        if chat_data["is_finnish"]
-        else "For which division are you applying?"
+    await update.message.reply_text(
+        "Minkä jaoksen virkaan haet?",
+        reply_markup=keyboard,
     )
-    await query.edit_message_text(
-        text=text,
+    return SELECTING_DIVISION
+
+
+async def apply(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+) -> int:
+    """Apply for a position in English."""
+    chat_data = context.chat_data
+    chat_data["is_finnish"] = False
+
+    localized_divisions, callback_data = data_manager.get_divisions(False)
+    keyboard = generate_keyboard(localized_divisions, callback_data)
+
+    await update.message.reply_text(
+        "For which division are you applying?",
         reply_markup=keyboard,
     )
     return SELECTING_DIVISION
