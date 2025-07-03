@@ -32,6 +32,7 @@ from .admin_commands import (
     edit_or_add_new_role,
     remove_role,
     export_data,
+    admin_help,
 )
 from .user_commands import (
     register_channel,
@@ -41,6 +42,8 @@ from .user_commands import (
     jauho,
     lauh,
     mauh,
+    help,
+    apua,
 )
 from .application_handlers import (
     hae,
@@ -136,6 +139,9 @@ async def post_init(app: Application, data_manager: DataManager):
             "odottavat", create_wrapper(list_pending_applications, data_manager)
         )
     )
+    app.add_handler(
+        CommandHandler("admin_help", create_wrapper(admin_help, data_manager))
+    )
 
     # User command handlers
     app.add_handler(
@@ -149,6 +155,8 @@ async def post_init(app: Application, data_manager: DataManager):
     app.add_handler(CommandHandler("jauho", create_wrapper(jauho, data_manager)))
     app.add_handler(CommandHandler("lauh", create_wrapper(lauh, data_manager)))
     app.add_handler(CommandHandler("mauh", create_wrapper(mauh, data_manager)))
+    app.add_handler(CommandHandler("help", create_wrapper(help, data_manager)))
+    app.add_handler(CommandHandler("apua", create_wrapper(apua, data_manager)))
 
     # Admin approval callback handler
     app.add_handler(

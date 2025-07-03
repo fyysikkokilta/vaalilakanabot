@@ -10,6 +10,72 @@ from .utils import vaalilakana_to_string
 logger = logging.getLogger("vaalilakanabot")
 
 
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager):
+    """Show help information for users in English."""
+    try:
+        help_text = """
+🤖 <b>Vaalilakanabot - User Commands</b>
+
+<b>Basic Commands:</b>
+• /start - Register channel for announcements
+• /lakana - Show current vaalilakana
+• /hae - Apply for a position (use in private message)
+
+<b>Fun Commands:</b>
+• /jauhis - Send jauhis sticker
+• /jauh - Send jauh sticker  
+• /jauho - Send jauho sticker
+• /lauh - Send lauh sticker
+• /mauh - Send mauh sticker
+
+<b>Additional Information:</b>
+• Use /hae in private message to the bot to apply for a position
+• Vaalilakana updates automatically
+• Applications for elected positions require admin approval
+
+<b>Finnish help:</b> /apua
+
+Need help? Contact the administrators!
+        """
+
+        await update.message.reply_html(help_text)
+    except Exception as e:
+        logger.error(e)
+
+
+async def apua(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager):
+    """Show help information for users in Finnish."""
+    try:
+        help_text = """
+🤖 <b>Vaalilakanabot - Käyttäjän komennot</b>
+
+<b>Peruskomennot:</b>
+• /start - Rekisteröi kanavan tiedotuskanavaksi
+• /lakana - Näytä nykyinen vaalilakana
+• /hae - Hae virkaan (käytä yksityisviestissä)
+
+<b>Hauskat komennot:</b>
+• /jauhis - Lähetä jauhis-tarra
+• /jauh - Lähetä jauh-tarra  
+• /jauho - Lähetä jauho-tarra
+• /lauh - Lähetä lauh-tarra
+• /mauh - Lähetä mauh-tarra
+
+<b>Lisätietoja:</b>
+• Käytä /hae yksityisviestissä botille hakeaksesi virkaan
+• Vaalilakana päivittyy automaattisesti
+• Vaaleilla valittujen roolien hakemukset vaativat ylläpidon hyväksynnän
+
+<b>English help:</b> /help
+
+Tarvitsetko apua? Ota yhteyttä ylläpitoon!
+        """
+
+        await update.message.reply_html(help_text)
+    except Exception as e:
+        logger.error(e)
+
+
 async def register_channel(
     update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
 ):

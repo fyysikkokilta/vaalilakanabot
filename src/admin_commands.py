@@ -12,6 +12,49 @@ from .utils import create_fiirumi_link
 logger = logging.getLogger("vaalilakanabot")
 
 
+async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager):
+    """Show help information for admins in English."""
+    try:
+        chat_id = update.message.chat.id
+        if str(chat_id) == str(ADMIN_CHAT_ID):
+            help_text = """
+🔧 <b>Vaalilakanabot - Admin Commands</b>
+
+<b>Applicant Management:</b>
+• /poista &lt;position&gt;, &lt;name&gt; - Remove applicant from position
+• /valittu &lt;position&gt;, &lt;name&gt; - Mark applicant as selected
+• /odottavat - Show pending applications
+
+<b>Fiirumi Link Management:</b>
+• /lisaa_fiirumi &lt;position&gt;, &lt;name&gt;, &lt;thread_id&gt; - Add Fiirumi link to applicant
+• /poista_fiirumi &lt;position&gt;, &lt;name&gt; - Remove Fiirumi link from applicant
+
+<b>Role Management:</b>
+• /muokkaa_roolia &lt;division&gt;, &lt;role&gt;, &lt;role_en&gt;, &lt;applicant_count&gt;, &lt;deadline&gt; - Edit or add role
+• /poista_rooli &lt;division&gt;, &lt;role&gt; - Remove role
+
+<b>Data Export:</b>
+• /vie_tiedot - Export all applicant data as CSV file
+
+<b>Examples:</b>
+• /poista Puheenjohtaja, Maija Meikäläinen
+• /valittu Varapuheenjohtaja, Pekka Päällikkö
+• /lisaa_fiirumi Puheenjohtaja, Maija Meikäläinen, 12345
+• /muokkaa_roolia MUUT TOIMIHENKILÖT, Uusi rooli, New role, 2, 15.12.
+• /poista_rooli MUUT TOIMIHENKILÖT, Uusi rooli
+• /vie_tiedot Hovimestari
+
+<b>Important Notes:</b>
+• All commands work only in admin chat
+• Thread ID can be found in Fiirumi post URL
+• Deadline format: DD.MM. (e.g., 15.12.)
+            """
+
+            await update.message.reply_html(help_text)
+    except Exception as e:
+        logger.error(e)
+
+
 async def remove_applicant(
     update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
 ):
