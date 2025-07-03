@@ -77,7 +77,8 @@ docker-compose -f docker-compose.prod.yml up
 Botti tukee seuraavia komentoja:
 
 - `/start` Rekisteröi ryhmän botin tiedotuskanavaksi ja ryhmää saa botilta ilmoituksia.
-- `/lakana` Näyttää vaalien ehdokastilanteen.
+- `/lakana` Näyttää vaalien ehdokastilanteen (suomeksi).
+- `/sheet` Näyttää vaalien ehdokastilanteen (englanniksi).
 - `/jauhis` Näyttää vaaliaiheisen kuvan.
 - `/jauh` Näyttää vaaliaiheisen kuvan.
 - `/jauho` Näyttää vaaliaiheisen kuvan.

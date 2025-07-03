@@ -5,7 +5,7 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from .utils import vaalilakana_to_string
+from .utils import vaalilakana_to_string, vaalilakana_to_string_en
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -18,7 +18,8 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager)
 
 <b>Basic Commands:</b>
 • /start - Register channel for announcements
-• /lakana - Show current vaalilakana
+• /lakana - Show current vaalilakana (Finnish)
+• /sheet - Show current election sheet (English)
 • /hae - Apply for a position (use in private message)
 
 <b>Fun Commands:</b>
@@ -51,7 +52,8 @@ async def apua(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager)
 
 <b>Peruskomennot:</b>
 • /start - Rekisteröi kanavan tiedotuskanavaksi
-• /lakana - Näytä nykyinen vaalilakana
+• /lakana - Näytä nykyinen vaalilakana (suomeksi)
+• /sheet - Näytä nykyinen vaalilakana (englanniksi)
 • /hae - Hae virkaan (käytä yksityisviestissä)
 
 <b>Hauskat komennot:</b>
@@ -100,6 +102,22 @@ async def show_vaalilakana(
         )
         await update.message.reply_html(
             vaalilakana_text,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        logger.error(e)
+
+
+async def show_election_sheet(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+):
+    """Show the current election sheet in English."""
+    try:
+        election_sheet_text = vaalilakana_to_string_en(
+            data_manager.vaalilakana, data_manager.find_division_for_position
+        )
+        await update.message.reply_html(
+            election_sheet_text,
             disable_web_page_preview=True,
         )
     except Exception as e:

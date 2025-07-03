@@ -37,6 +37,7 @@ from .admin_commands import (
 from .user_commands import (
     register_channel,
     show_vaalilakana,
+    show_election_sheet,
     jauhis,
     jauh,
     jauho,
@@ -150,6 +151,9 @@ async def post_init(app: Application, data_manager: DataManager):
     )
     app.add_handler(
         CommandHandler("lakana", create_wrapper(show_vaalilakana, data_manager))
+    )
+    app.add_handler(
+        CommandHandler("sheet", create_wrapper(show_election_sheet, data_manager))
     )
     app.add_handler(CommandHandler("jauhis", create_wrapper(jauhis, data_manager)))
     app.add_handler(CommandHandler("jauh", create_wrapper(jauh, data_manager)))

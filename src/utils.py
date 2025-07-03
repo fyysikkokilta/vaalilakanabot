@@ -105,6 +105,74 @@ def vaalilakana_to_string(vaalilakana: dict, find_division_func) -> str:
     return output
 
 
+def vaalilakana_to_string_en(vaalilakana: dict, find_division_func) -> str:
+    """Convert vaalilakana data to a formatted string in English."""
+    output = ""
+    output += "<b>---------------Board---------------</b>\n"
+
+    # Hardcoded to maintain order instead using dict keys
+    for position in BOARD:
+        # Get English title if available
+        division = find_division_func(position)
+        if division:
+            role_data = vaalilakana[division]["roles"][position]
+            position_en = role_data.get("title_en", position)
+        else:
+            position_en = position
+
+        output += f"<b>{position_en}:</b>\n"
+        if division:
+            applicants = vaalilakana[division]["roles"][position]["applicants"]
+            for applicant in applicants:
+                link = applicant["fiirumi"]
+                selected = applicant["valittu"]
+                if selected:
+                    if link:
+                        output += (
+                            f'- <a href="{link}">{applicant["name"]}</a> (selected)\n'
+                        )
+                    else:
+                        output += f'- {applicant["name"]} (selected)\n'
+                else:
+                    if link:
+                        output += f'- <a href="{link}">{applicant["name"]}</a>\n'
+                    else:
+                        output += f'- {applicant["name"]}\n'
+        output += "\n"
+
+    output += "<b>----------Officials----------</b>\n"
+    for position in ELECTED_OFFICIALS:
+        # Get English title if available
+        division = find_division_func(position)
+        if division:
+            role_data = vaalilakana[division]["roles"][position]
+            position_en = role_data.get("title_en", position)
+        else:
+            position_en = position
+
+        output += f"<b>{position_en}:</b>\n"
+        if division:
+            applicants = vaalilakana[division]["roles"][position]["applicants"]
+            for applicant in applicants:
+                link = applicant["fiirumi"]
+                selected = applicant["valittu"]
+                if selected:
+                    if link:
+                        output += (
+                            f'- <a href="{link}">{applicant["name"]}</a> (selected)\n'
+                        )
+                    else:
+                        output += f'- {applicant["name"]} (selected)\n'
+                else:
+                    if link:
+                        output += f'- <a href="{link}">{applicant["name"]}</a>\n'
+                    else:
+                        output += f'- {applicant["name"]}\n'
+        output += "\n"
+
+    return output
+
+
 def create_fiirumi_link(slug: str, t_id: str) -> str:
     """Create a fiirumi link from slug and thread ID."""
     return f"{BASE_URL}/t/{slug}/{t_id}"
