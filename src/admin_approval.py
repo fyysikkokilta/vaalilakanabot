@@ -4,7 +4,7 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from .config import ADMIN_CHAT_ID
+from .config import ADMIN_CHAT_ID, BOARD, ELECTED_OFFICIALS
 from .announcements import announce_to_channels
 
 logger = logging.getLogger("vaalilakanabot")
@@ -20,7 +20,31 @@ async def send_admin_approval_request(
     applicant = application_data["applicant"]
     position = application_data["position"]
     division = application_data["division"]
+    user_id = applicant["user_id"]
 
+    # Check if user already has other elected role applications
+    existing_elected_applications = []
+
+    # Check for approved applications to elected roles
+    for div_name, div_data in data_manager.vaalilakana.items():
+        for role_title, role_data in div_data["roles"].items():
+            if role_title in BOARD + ELECTED_OFFICIALS and role_title != position:
+                for app in role_data["applicants"]:
+                    if app["user_id"] == user_id:
+                        existing_elected_applications.append(
+                            f"✅ {role_title} (approved)"
+                        )
+
+    # Check for pending applications to elected roles
+    for app_id, app_data in data_manager.pending_applications.items():
+        if (
+            app_data["applicant"]["user_id"] == user_id
+            and app_data["position"] in BOARD + ELECTED_OFFICIALS
+            and app_data["position"] != position
+        ):
+            existing_elected_applications.append(f"⏳ {app_data['position']} (pending)")
+
+    # Build the admin message
     text = (
         f"🗳️ <b>Uusi hakemus vaaleilla valittavaan virkaan</b>\n\n"
         f"<b>Virka:</b> {position}\n"
@@ -28,8 +52,18 @@ async def send_admin_approval_request(
         f"<b>Nimi:</b> {applicant['name']}\n"
         f"<b>Sähköposti:</b> {applicant['email']}\n"
         f"<b>Telegram:</b> @{applicant['telegram']}\n\n"
-        f"Hyväksytäänkö hakemus?"
     )
+
+    # Add warning if user has other elected applications
+    if existing_elected_applications:
+        text += (
+            f"⚠️ <b>VAROITUS: Hakijalla on jo muut vaaleilla valittavat hakemukset!</b>\n\n"
+            f"<b>Muut hakemukset:</b>\n"
+        )
+        for app in existing_elected_applications:
+            text += f"• {app}\n"
+
+    text += f"\nHyväksytäänkö hakemus?"
 
     keyboard = [
         [

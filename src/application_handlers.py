@@ -128,6 +128,82 @@ async def select_role(
         await query.edit_message_text(text)
         return ConversationHandler.END
 
+    # Check if user already has an approved or pending application for any elected role
+    if position in BOARD + ELECTED_OFFICIALS:
+        has_elected_application = False
+        elected_position = ""
+
+        # Check for approved applications to elected roles
+        for division in data_manager.vaalilakana.values():
+            for role_title, role_data in division["roles"].items():
+                if role_title in BOARD + ELECTED_OFFICIALS:
+                    for applicant in role_data["applicants"]:
+                        if applicant["user_id"] == user_id:
+                            has_elected_application = True
+                            elected_position = role_title
+                            break
+                    if has_elected_application:
+                        break
+            if has_elected_application:
+                break
+
+        # Check for pending applications to elected roles
+        if not has_elected_application:
+            for app_id, application in data_manager.pending_applications.items():
+                if (
+                    application["applicant"]["user_id"] == user_id
+                    and application["position"] in BOARD + ELECTED_OFFICIALS
+                ):
+                    has_elected_application = True
+                    elected_position = application["position"]
+                    break
+
+        if has_elected_application:
+            warning_text = (
+                (
+                    f"⚠️ <b>Varoitus: Olet jo hakenut vaaleilla valittavaan virkaan!</b>\n\n"
+                    f"Olet jo hakenut virkaan: <b>{elected_position}</b>\n\n"
+                    f"Jos sinulla on vararooleja, kerro niistä raadille suoraan.\n\n"
+                    f"Haluatko jatkaa hakemusta tähän rooliin?"
+                )
+                if chat_data["is_finnish"]
+                else (
+                    f"⚠️ <b>Warning: You have already applied to an elected position!</b>\n\n"
+                    f"You have already applied to: <b>{elected_position}</b>\n\n"
+                    f"If you have backup roles, tell the board directly.\n\n"
+                    f"Do you want to continue with this application?"
+                )
+            )
+
+            keyboard = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "Jatka" if chat_data["is_finnish"] else "Continue",
+                            callback_data="continue_multiple",
+                        ),
+                        InlineKeyboardButton(
+                            "Peruuta" if chat_data["is_finnish"] else "Cancel",
+                            callback_data="cancel_multiple",
+                        ),
+                    ]
+                ]
+            )
+
+            await query.edit_message_text(
+                warning_text, reply_markup=keyboard, parse_mode="HTML"
+            )
+            chat_data["position"] = position
+            chat_data["loc_position"] = (
+                chat_data["position"]
+                if chat_data["is_finnish"]
+                else data_manager.vaalilakana[chat_data["division"]]["roles"][position][
+                    "title_en"
+                ]
+            )
+            chat_data["is_elected"] = chat_data["position"] in ELECTED_OFFICIALS + BOARD
+            return SELECTING_ROLE
+
     chat_data["position"] = position
     chat_data["loc_position"] = (
         chat_data["position"]
@@ -306,4 +382,35 @@ async def cancel(
     chat_data = context.chat_data
     chat_data.clear()
     await update.message.reply_text("Cancelled current operation.")
+    return ConversationHandler.END
+
+
+async def handle_multiple_application_choice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+) -> int:
+    """Handle user choice when applying to multiple elected roles."""
+    query = update.callback_query
+    chat_data = context.chat_data
+    await query.answer()
+
+    if query.data == "cancel_multiple":
+        text = (
+            "Hakemus peruttu." if chat_data["is_finnish"] else "Application cancelled."
+        )
+        await query.edit_message_text(text)
+        return ConversationHandler.END
+
+    elif query.data == "continue_multiple":
+        # Continue with the application
+        elected_role_text = "vaaleilla valittavaan " if chat_data["is_elected"] else ""
+        elected_role_text_en = "elected " if chat_data["is_elected"] else ""
+
+        text = (
+            f"Haet {elected_role_text}rooliin: {chat_data['loc_position']}. Mikä on nimesi?"
+            if chat_data["is_finnish"]
+            else f"You are applying to the {elected_role_text_en}role: {chat_data['loc_position']}. What is your name?"
+        )
+        await query.edit_message_text(text=text)
+        return GIVING_NAME
+
     return ConversationHandler.END
