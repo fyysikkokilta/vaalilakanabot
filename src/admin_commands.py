@@ -226,14 +226,38 @@ async def edit_or_add_new_role(
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
             text = update.message.text.replace("/muokkaa_roolia", "").strip()
+
+            # Check if any parameters were provided
+            if not text:
+                await update.message.reply_text(
+                    "Virheelliset parametrit - "
+                    "/muokkaa_roolia <jaos>, <rooli>, <rooli_en>, <hakijamäärä>, <hakuaika>\n\n"
+                    "Esimerkki: /muokkaa_roolia MUUT TOIMIHENKILÖT, Uusi rooli, New role, 2, 15.12."
+                )
+                return
+
             params = text.split(",")
+
+            # Validate minimum required parameters
+            if len(params) < 2:
+                await update.message.reply_text(
+                    "Virheelliset parametrit - tarvitaan vähintään jaos ja rooli\n"
+                    "/muokkaa_roolia <jaos>, <rooli>, <rooli_en>, <hakijamäärä>, <hakuaika>"
+                )
+                return
 
             try:
                 division = params[0].strip()
                 role = params[1].strip()
-                role_en = params[2].strip() if params[2].strip() else None
-                amount = params[3].strip() if params[3].strip() else None
-                application_dl = params[4].strip() if params[4].strip() else None
+                role_en = (
+                    params[2].strip() if len(params) > 2 and params[2].strip() else None
+                )
+                amount = (
+                    params[3].strip() if len(params) > 3 and params[3].strip() else None
+                )
+                application_dl = (
+                    params[4].strip() if len(params) > 4 and params[4].strip() else None
+                )
             except Exception as e:
                 await update.message.reply_text(
                     "Virheelliset parametrit - "
@@ -241,14 +265,52 @@ async def edit_or_add_new_role(
                 )
                 raise ValueError("Invalid parameters") from e
 
+            # Validate division exists
             if division not in [division["fi"] for division in data_manager.divisions]:
-                await update.message.reply_text(f"Tunnistamaton jaos: {division}")
-                raise ValueError(f"Unknown division {division}")
+                await update.message.reply_text(
+                    f"Tunnistamaton jaos: {division}\n\n"
+                    f"Käytettävissä olevat jaokset:\n"
+                    + "\n".join([f"• {div['fi']}" for div in data_manager.divisions])
+                )
+                return
 
-            if role not in [
-                role["title"]
-                for role in data_manager.vaalilakana[division]["roles"].values()
-            ]:
+            # Validate role name is not empty
+            if not role:
+                await update.message.reply_text("Roolin nimi ei voi olla tyhjä.")
+                return
+
+            # Validate amount format if provided
+            if amount:
+                # Allow formats like: "1", "2", "1-2", "n", "13-15"
+                import re
+
+                if not re.match(r"^(\d+(-\d+)?|n)$", amount):
+                    await update.message.reply_text(
+                        f"Virheellinen hakijamäärä: {amount}\n"
+                        "Sallitut muodot: '1', '2', '1-2', 'n', '13-15'"
+                    )
+                    return
+
+            # Validate application deadline format if provided
+            if application_dl:
+                # Allow formats like: "15.12.", "3.11.", "29.11."
+                import re
+
+                if not re.match(r"^\d{1,2}\.\d{1,2}\.$", application_dl):
+                    await update.message.reply_text(
+                        f"Virheellinen hakuaika: {application_dl}\n"
+                        "Sallittu muoto: 'DD.MM.' (esim. '15.12.', '3.11.')"
+                    )
+                    return
+
+            # Check if role already exists
+            existing_roles = [
+                role_data["title"]
+                for role_data in data_manager.vaalilakana[division]["roles"].values()
+            ]
+
+            if role not in existing_roles:
+                # Add new role
                 data_manager.vaalilakana[division]["roles"][role] = {
                     "title": role,
                     "title_en": role_en if role_en else role,
@@ -256,27 +318,56 @@ async def edit_or_add_new_role(
                     "application_dl": application_dl,
                     "applicants": [],
                 }
-                data_manager.positions.append({"fi": role, "en": role_en})
+
+                # Update positions list
+                data_manager.positions.append(
+                    {"fi": role, "en": role_en if role_en else role}
+                )
+
                 data_manager.save_data(
                     "data/vaalilakana.json", data_manager.vaalilakana
                 )
-                await update.message.reply_text(f"Lisätty:\n{division}: {role}")
+                await update.message.reply_text(
+                    f"✅ Lisätty uusi rooli:\n"
+                    f"<b>Jaos:</b> {division}\n"
+                    f"<b>Rooli:</b> {role}\n"
+                    f"<b>Rooli (EN):</b> {role_en if role_en else role}\n"
+                    f"<b>Hakuaika:</b> {application_dl if application_dl else 'ei määritelty'}",
+                    parse_mode="HTML",
+                )
             else:
+                # Update existing role
+                # Preserve existing applicants
+                existing_applicants = data_manager.vaalilakana[division]["roles"][role][
+                    "applicants"
+                ]
+
                 data_manager.vaalilakana[division]["roles"][role] = {
                     "title": role,
                     "title_en": role_en if role_en else role,
                     "amount": amount,
                     "application_dl": application_dl,
-                    "applicants": data_manager.vaalilakana[division]["roles"][role][
-                        "applicants"
-                    ],
+                    "applicants": existing_applicants,
                 }
+
                 data_manager.save_data(
                     "data/vaalilakana.json", data_manager.vaalilakana
                 )
-                await update.message.reply_text(f"Päivitetty:\n{division}: {role}")
+                await update.message.reply_text(
+                    f"✅ Päivitetty rooli:\n"
+                    f"<b>Jaos:</b> {division}\n"
+                    f"<b>Rooli:</b> {role}\n"
+                    f"<b>Rooli (EN):</b> {role_en if role_en else role}\n"
+                    f"<b>Hakijamäärä:</b> {amount if amount else 'ei määritelty'}\n"
+                    f"<b>Hakuaika:</b> {application_dl if application_dl else 'ei määritelty'}\n"
+                    f"<b>Hakijoita:</b> {len(existing_applicants)}",
+                    parse_mode="HTML",
+                )
     except Exception as e:
-        logger.error(e)
+        logger.error(f"Error in edit_or_add_new_role: {e}")
+        await update.message.reply_text(
+            "Virhe roolin muokkaamisessa. Tarkista parametrit ja yritä uudelleen."
+        )
 
 
 async def remove_role(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager):
