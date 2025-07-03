@@ -99,6 +99,8 @@ Admin-chatissa seuraavat komennot ovat käytössä:
 - `/pending` Näyttää kaikki odottavat hakemukset, jotka vaativat admin-hyväksynnän.
 - `/admin_help` Näyttää admin-komentojen ohjeen.
 
+**Huomio:** Admin-komennot tukevat sekä suomen- että englanninkielisiä jaos- ja roolinimiä. Jos nimiä ei löydy, botti näyttää saatavilla olevat vaihtoehdot.
+
 ### Admin-hyväksyntä
 
 Hakemukset vaaleilla valittaviin virkoihin (määritellään `BOARD` ja `ELECTED_OFFICIALS` ympäristömuuttujissa) vaativat admin-hyväksynnän:

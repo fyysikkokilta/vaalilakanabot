@@ -48,6 +48,8 @@ async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE, data_ma
 • All commands work only in admin chat
 • Thread ID can be found in Fiirumi post URL
 • Deadline format: DD.MM. (e.g., 15.12.)
+• <b>Division and role names support both Finnish and English</b>
+• If a name is not found, the bot will show available options
             """
 
             await update.message.reply_html(help_text)
@@ -74,17 +76,29 @@ async def remove_applicant(
                 )
                 raise ValueError("Invalid parameters") from e
 
-            if position not in [position["fi"] for position in data_manager.positions]:
-                await update.message.reply_text(f"Unknown position: {position}")
-                raise ValueError(f"Unknown position {position}")
-
-            division = data_manager.find_division_for_position(position)
-            if not division:
-                await update.message.reply_text(f"Division not found: {position}")
+            # Find position by Finnish or English name
+            found_position = data_manager.find_position_by_name(position)
+            if not found_position:
+                # Show available positions
+                all_positions = data_manager.get_all_positions()
+                position_list = "\n".join(
+                    [f"• {pos['fi']} / {pos['en']}" for pos in all_positions[:20]]
+                )  # Limit to first 20
+                await update.message.reply_text(
+                    f"Unknown position: {position}\n\n"
+                    f"Available positions (showing first 20):\n{position_list}"
+                )
                 return
 
-            data_manager.remove_applicant(division, position, name)
-            await update.message.reply_text(f"Removed:\n{position}: {name}")
+            division = data_manager.find_division_for_position(found_position)
+            if not division:
+                await update.message.reply_text(
+                    f"Division not found for position: {found_position}"
+                )
+                return
+
+            data_manager.remove_applicant(division, found_position, name)
+            await update.message.reply_text(f"Removed:\n{found_position}: {name}")
     except Exception as e:
         logger.error(e)
 
@@ -109,29 +123,39 @@ async def add_fiirumi_to_applicant(
                 )
                 raise ValueError("Invalid parameters") from e
 
-            if position not in BOARD + ELECTED_OFFICIALS:
+            # Find position by Finnish or English name
+            found_position = data_manager.find_position_by_name(position)
+            if not found_position:
                 await update.message.reply_text(f"Unknown position: {position}")
-                raise ValueError(f"Unknown position {position}")
+                return
+
+            if found_position not in BOARD + ELECTED_OFFICIALS:
+                await update.message.reply_text(
+                    f"Position {found_position} is not an elected position"
+                )
+                return
 
             if thread_id not in data_manager.fiirumi_posts:
                 await update.message.reply_text(
                     f"Fiirumi post not found with given id: {thread_id}",
                 )
-                raise ValueError(f"Unknown thread {thread_id}")
+                return
 
-            division = data_manager.find_division_for_position(position)
+            division = data_manager.find_division_for_position(found_position)
             if not division:
-                await update.message.reply_text(f"Division not found: {position}")
+                await update.message.reply_text(
+                    f"Division not found for position: {found_position}"
+                )
                 return
 
             fiirumi = create_fiirumi_link(
                 data_manager.fiirumi_posts[thread_id]["slug"],
                 data_manager.fiirumi_posts[thread_id]["id"],
             )
-            data_manager.set_applicant_fiirumi(division, position, name, fiirumi)
+            data_manager.set_applicant_fiirumi(division, found_position, name, fiirumi)
 
             await update.message.reply_html(
-                f'Added Fiirumi:\n{position}: <a href="{fiirumi}">{name}</a>',
+                f'Added Fiirumi:\n{found_position}: <a href="{fiirumi}">{name}</a>',
             )
     except Exception as e:
         logger.error(e)
@@ -144,15 +168,12 @@ async def unassociate_fiirumi(
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
-            # Converts /remove_fiirumi Puheenjohtaja, Fysisti kiltalainen
-            # to ["Puheenjohtaja", "Fysisti kiltalainen"]
             params = [
                 arg.strip()
                 for arg in update.message.text.replace("/remove_fiirumi", "")
                 .strip()
                 .split(",")
             ]
-            # Try find role
             try:
                 position, name = params
             except Exception as e:
@@ -162,25 +183,28 @@ async def unassociate_fiirumi(
                 )
                 return
 
-            if position not in BOARD + ELECTED_OFFICIALS:
+            # Find position by Finnish or English name
+            found_position = data_manager.find_position_by_name(position)
+            if not found_position:
+                await update.message.reply_text(f"Unknown position: {position}")
+                return
+
+            if found_position not in BOARD + ELECTED_OFFICIALS:
                 await update.message.reply_text(
-                    "Invalid parameters, position not found"
+                    f"Position {found_position} is not an elected position"
                 )
                 return
 
-            # Try finding the dict with matching applicant name from vaalilakana
-            division = data_manager.find_division_for_position(position)
+            division = data_manager.find_division_for_position(found_position)
             if not division:
-                await update.message.reply_text(f"Division not found: {position}")
+                await update.message.reply_text(
+                    f"Division not found for position: {found_position}"
+                )
                 return
 
-            data_manager.set_applicant_fiirumi(division, position, name, "")
+            data_manager.set_applicant_fiirumi(division, found_position, name, "")
             await update.message.reply_text(f"Fiirumi link removed:\n{name}")
-        else:
-            # Not admin chat
-            pass
     except Exception as e:
-        # Unknown error :/
         logger.error(e)
 
 
@@ -203,17 +227,23 @@ async def add_selected_tag(
                 )
                 raise ValueError from e
 
-            if position not in [position["fi"] for position in data_manager.positions]:
+            # Find position by Finnish or English name
+            found_position = data_manager.find_position_by_name(position)
+            if not found_position:
                 await update.message.reply_text(f"Unknown position: {position}")
-                raise ValueError(f"Unknown position {position}")
-
-            division = data_manager.find_division_for_position(position)
-            if not division:
-                await update.message.reply_text(f"Division not found: {position}")
                 return
 
-            data_manager.set_applicant_selected(division, position, name)
-            await update.message.reply_text(f"Applicant selected:\n{position}: {name}")
+            division = data_manager.find_division_for_position(found_position)
+            if not division:
+                await update.message.reply_text(
+                    f"Division not found for position: {found_position}"
+                )
+                return
+
+            data_manager.set_applicant_selected(division, found_position, name)
+            await update.message.reply_text(
+                f"Applicant selected:\n{found_position}: {name}"
+            )
     except Exception as e:
         logger.error(e)
 
@@ -247,7 +277,7 @@ async def edit_or_add_new_role(
                 return
 
             try:
-                division = params[0].strip()
+                division_param = params[0].strip()
                 role = params[1].strip()
                 role_en = (
                     params[2].strip() if len(params) > 2 and params[2].strip() else None
@@ -265,12 +295,17 @@ async def edit_or_add_new_role(
                 )
                 raise ValueError("Invalid parameters") from e
 
-            # Validate division exists
-            if division not in [division["fi"] for division in data_manager.divisions]:
+            # Find division by Finnish or English name
+            division = data_manager.find_division_by_name(division_param)
+            if not division:
+                # Show available divisions
+                all_divisions = data_manager.get_all_divisions()
+                division_list = "\n".join(
+                    [f"• {div['fi']} / {div['en']}" for div in all_divisions]
+                )
                 await update.message.reply_text(
-                    f"Unknown division: {division}\n\n"
-                    f"Available divisions:\n"
-                    + "\n".join([f"• {div['fi']}" for div in data_manager.divisions])
+                    f"Unknown division: {division_param}\n\n"
+                    f"Available divisions:\n{division_list}"
                 )
                 return
 
@@ -379,27 +414,50 @@ async def remove_role(update: Update, context: ContextTypes.DEFAULT_TYPE, data_m
             params = text.split(",")
 
             try:
-                division = params[0].strip()
-                role = params[1].strip()
+                division_param = params[0].strip()
+                role_param = params[1].strip()
             except Exception as e:
                 await update.message.reply_text(
                     "Invalid parameters - /remove_role <division>, <role>"
                 )
                 raise ValueError("Invalid parameters") from e
 
-            if division not in [division["fi"] for division in data_manager.divisions]:
-                await update.message.reply_text(f"Unknown division: {division}")
-                raise ValueError(f"Unknown division {division}")
+            # Find division by Finnish or English name
+            division = data_manager.find_division_by_name(division_param)
+            if not division:
+                all_divisions = data_manager.get_all_divisions()
+                division_list = "\n".join(
+                    [f"• {div['fi']} / {div['en']}" for div in all_divisions]
+                )
+                await update.message.reply_text(
+                    f"Unknown division: {division_param}\n\n"
+                    f"Available divisions:\n{division_list}"
+                )
+                return
 
-            if role not in [
-                role["title"]
-                for role in data_manager.vaalilakana[division]["roles"].values()
-            ]:
-                await update.message.reply_text(f"Unknown position: {role}")
-                raise ValueError(f"Unknown position {role}")
+            # Find role by Finnish or English name
+            role = data_manager.find_position_by_name(role_param, division)
+            if not role:
+                # Show available roles in this division
+                division_roles = []
+                for role_title, role_data in data_manager.vaalilakana[division][
+                    "roles"
+                ].items():
+                    division_roles.append(
+                        f"• {role_title} / {role_data.get('title_en', role_title)}"
+                    )
+                role_list = "\n".join(division_roles[:20])  # Limit to first 20
+                await update.message.reply_text(
+                    f"Unknown role: {role_param}\n\n"
+                    f"Available roles in {division} (showing first 20):\n{role_list}"
+                )
+                return
 
             del data_manager.vaalilakana[division]["roles"][role]
-            data_manager.positions.remove({"fi": role, "en": role})
+            # Remove from positions list
+            data_manager.positions = [
+                pos for pos in data_manager.positions if pos["fi"] != role
+            ]
             data_manager.save_data("data/vaalilakana.json", data_manager.vaalilakana)
             await update.message.reply_text(f"Removed:\n{division}: {role}")
     except Exception as e:
@@ -408,7 +466,6 @@ async def remove_role(update: Update, context: ContextTypes.DEFAULT_TYPE, data_m
 
 async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager):
     """Export applicant data to CSV."""
-    # Create a csv with the name, role, email and telegram of all applicants
     try:
         chat_id = update.message.chat.id
         if str(chat_id) == str(ADMIN_CHAT_ID):
@@ -419,18 +476,22 @@ async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE, data_m
             output.write("Name,Role,Email,Telegram\n")
 
             if len(text) > 0:
-                role = params[0].strip()
-                if role not in [position["fi"] for position in data_manager.positions]:
-                    await update.message.reply_text(f"Unknown position: {role}")
-                    raise ValueError(f"Unknown position {role}")
+                position_param = params[0].strip()
+                # Find position by Finnish or English name
+                found_position = data_manager.find_position_by_name(position_param)
+                if not found_position:
+                    await update.message.reply_text(
+                        f"Unknown position: {position_param}"
+                    )
+                    return
 
-                division = data_manager.find_division_for_position(role)
+                division = data_manager.find_division_for_position(found_position)
                 if division:
-                    for applicant in data_manager.vaalilakana[division]["roles"][role][
-                        "applicants"
-                    ]:
+                    for applicant in data_manager.vaalilakana[division]["roles"][
+                        found_position
+                    ]["applicants"]:
                         output.write(
-                            f"{applicant['name']},{role},{applicant['email']},{applicant['telegram']}\n"
+                            f"{applicant['name']},{found_position},{applicant['email']},{applicant['telegram']}\n"
                         )
             else:
                 for division in data_manager.vaalilakana.values():

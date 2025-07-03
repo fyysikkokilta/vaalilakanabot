@@ -118,6 +118,82 @@ class DataManager:
         logger.warning("Position %s not found in vaalilakana", position)
         return None
 
+    def find_division_by_name(self, division_name: str) -> str:
+        """Find division by Finnish or English name."""
+        # First try exact match with Finnish names
+        for division in self.divisions:
+            if division["fi"] == division_name:
+                return division["fi"]
+
+        # Then try exact match with English names
+        for division in self.divisions:
+            if division["en"] == division_name:
+                return division["fi"]
+
+        # Try case-insensitive match
+        division_name_lower = division_name.lower()
+        for division in self.divisions:
+            if (
+                division["fi"].lower() == division_name_lower
+                or division["en"].lower() == division_name_lower
+            ):
+                return division["fi"]
+
+        return None
+
+    def find_position_by_name(self, position_name: str, division: str = None) -> str:
+        """Find position by Finnish or English name."""
+        if division:
+            # Search in specific division
+            if division in self.vaalilakana:
+                for role_title, role_data in self.vaalilakana[division][
+                    "roles"
+                ].items():
+                    if (
+                        role_title == position_name
+                        or role_data.get("title_en") == position_name
+                        or role_title.lower() == position_name.lower()
+                        or (
+                            role_data.get("title_en")
+                            and role_data["title_en"].lower() == position_name.lower()
+                        )
+                    ):
+                        return role_title
+        else:
+            # Search in all divisions
+            for div_name, div_data in self.vaalilakana.items():
+                for role_title, role_data in div_data["roles"].items():
+                    if (
+                        role_title == position_name
+                        or role_data.get("title_en") == position_name
+                        or role_title.lower() == position_name.lower()
+                        or (
+                            role_data.get("title_en")
+                            and role_data["title_en"].lower() == position_name.lower()
+                        )
+                    ):
+                        return role_title
+
+        return None
+
+    def get_all_positions(self) -> List[Dict]:
+        """Get all positions with both Finnish and English names."""
+        all_positions = []
+        for division in self.vaalilakana.values():
+            for role_title, role_data in division["roles"].items():
+                all_positions.append(
+                    {
+                        "fi": role_title,
+                        "en": role_data.get("title_en", role_title),
+                        "division": division["division"],
+                    }
+                )
+        return all_positions
+
+    def get_all_divisions(self) -> List[Dict]:
+        """Get all divisions with both Finnish and English names."""
+        return self.divisions
+
     def get_divisions(self, is_finnish: bool = True) -> tuple:
         """Get divisions with localization."""
         localized_divisions = [
