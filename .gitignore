@@ -5,3 +5,5 @@ data/*
 !example*
 
 __pycache__/
+
+.vscode/
