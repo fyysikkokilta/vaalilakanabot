@@ -71,6 +71,7 @@ async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE, data_ma
 
 <b>Data Export:</b>
 • /export_data - Export all applicant data as CSV file
+• /export_officials_website - Export officials data as CSV file for the Guild's website
 
 <b>Examples:</b>
 • /remove Puheenjohtaja, Maija Meikäläinen
@@ -534,3 +535,41 @@ async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE, data_m
         await update.message.reply_document(output, filename="applicants.csv")
     except Exception as e:
         logger.error(e)
+
+
+async def export_officials_website(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+):
+    """Export officials data to CSV format compatible with the Guild website."""
+    try:
+        if not is_admin_chat(update.message.chat.id):
+            return
+
+        output = StringIO()
+
+        # Process each division and role
+        for division_name, division_data in data_manager.vaalilakana.items():
+            for role_title, role_data in division_data["roles"].items():
+                # Skip board roles
+                if role_title in BOARD:
+                    continue
+
+                # Write division and role information
+                output.write(
+                    f'"{division_data["division"]}","{division_data["division_en"]}","{role_title}","{role_data.get("title_en", role_title)}"'
+                )
+
+                # Write applicant names
+                for applicant in role_data["applicants"]:
+                    if applicant["chosen"] is True:
+                        output.write(f',"{applicant["name"]}"')
+
+                output.write("\n")
+
+        output.seek(0)
+        await update.message.reply_document(output, filename="officials.csv")
+    except Exception as e:
+        logger.error(f"Error in export_officials_csv: {e}")
+        await update.message.reply_text(
+            "Error exporting officials data. Please try again."
+        )

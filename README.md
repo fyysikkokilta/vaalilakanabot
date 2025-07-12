@@ -99,6 +99,7 @@ The following commands are available in the admin chat:
 - `/edit_or_add_new_role` Adds a new role or modifies an existing role in the election sheet.
 - `/remove_role` Removes a role from the election sheet.
 - `/export_data` Creates a CSV file from applicant data.
+- `/export_officials_website` Creates a CSV for importing into the Guild's website.
 - `/pending` Shows all pending applications that require admin approval.
 - `/admin_help` Shows the admin commands help guide.
 

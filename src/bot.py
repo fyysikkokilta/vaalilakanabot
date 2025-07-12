@@ -31,6 +31,7 @@ from .admin_commands import (
     edit_or_add_new_role,
     remove_role,
     export_data,
+    export_officials_website,
     admin_help,
 )
 from .user_commands import (
@@ -134,6 +135,12 @@ async def post_init(app: Application, data_manager: DataManager):
     )
     app.add_handler(
         CommandHandler("export_data", create_wrapper(export_data, data_manager))
+    )
+    app.add_handler(
+        CommandHandler(
+            "export_officials_website",
+            create_wrapper(export_officials_website, data_manager),
+        )
     )
     app.add_handler(
         CommandHandler(
