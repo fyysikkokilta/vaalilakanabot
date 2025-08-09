@@ -374,6 +374,32 @@ async def cancel(
     return ConversationHandler.END
 
 
+async def handle_back_button(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+) -> int:
+    """Handle back button press to return to division selection."""
+    query = update.callback_query
+    chat_data = context.chat_data
+    await query.answer()
+
+    # Go back to division selection
+    localized_divisions, callback_data = data_manager.get_divisions(
+        chat_data["is_finnish"]
+    )
+    keyboard = generate_keyboard(localized_divisions, callback_data)
+
+    text = (
+        "Minkä jaoksen virkaan haet?"
+        if chat_data["is_finnish"]
+        else "For which division are you applying?"
+    )
+    await query.edit_message_text(
+        text=text,
+        reply_markup=keyboard,
+    )
+    return SELECTING_DIVISION
+
+
 async def handle_multiple_application_choice(
     update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
 ) -> int:

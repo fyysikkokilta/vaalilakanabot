@@ -56,6 +56,7 @@ from .application_handlers import (
     confirm_application,
     cancel,
     handle_multiple_application_choice,
+    handle_back_button,
 )
 from .announcements import parse_fiirumi_posts, announce_new_responses
 from .admin_approval import handle_admin_approval, list_pending_applications
@@ -194,6 +195,10 @@ async def post_init(app: Application, data_manager: DataManager):
                     create_wrapper(handle_multiple_application_choice, data_manager),
                     pattern="^(continue_multiple|cancel_multiple)$",
                 ),
+                CallbackQueryHandler(
+                    create_wrapper(handle_back_button, data_manager),
+                    pattern="^back$",
+                ),
                 CallbackQueryHandler(create_wrapper(select_role, data_manager)),
             ],
             GIVING_NAME: [
@@ -233,6 +238,10 @@ async def post_init(app: Application, data_manager: DataManager):
                 CallbackQueryHandler(
                     create_wrapper(handle_multiple_application_choice, data_manager),
                     pattern="^(continue_multiple|cancel_multiple)$",
+                ),
+                CallbackQueryHandler(
+                    create_wrapper(handle_back_button, data_manager),
+                    pattern="^back$",
                 ),
                 CallbackQueryHandler(create_wrapper(select_role, data_manager)),
             ],
