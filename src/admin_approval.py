@@ -37,7 +37,7 @@ async def send_admin_approval_request(
 
     # Check for pending applications to elected roles using Applications sheet rows
     # Build current role id for comparison
-    current_role = data_manager.find_role_by_name(position, division)
+    current_role = data_manager.find_role_by_name(position)
     current_role_id = current_role.get("ID") if current_role else None
 
     for app_row in data_manager.pending_applications:

@@ -198,10 +198,9 @@ async def select_role(
             chat_data["loc_position"] = (
                 chat_data["position"]
                 if chat_data["is_finnish"]
-                else (
-                    data_manager.find_role_by_name(position, chat_data["division"])
-                    or {}
-                ).get("Role_EN", position)
+                else (data_manager.find_role_by_name(position) or {}).get(
+                    "Role_EN", position
+                )
             )
             chat_data["is_elected"] = True
             return SELECTING_ROLE
@@ -210,9 +209,7 @@ async def select_role(
     chat_data["loc_position"] = (
         chat_data["position"]
         if chat_data["is_finnish"]
-        else (
-            data_manager.find_role_by_name(position, chat_data["division"]) or {}
-        ).get("Role_EN", position)
+        else (data_manager.find_role_by_name(position) or {}).get("Role_EN", position)
     )
     chat_data["is_elected"] = bool(is_elected_type)
 
