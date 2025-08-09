@@ -5,6 +5,7 @@ import os
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
+from collections import deque
 from cachetools import cached, TTLCache
 import gspread
 from google.oauth2.service_account import Credentials
@@ -54,6 +55,12 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         self.fiirumi_posts_sheet = None
         self.question_posts_sheet = None
 
+        # Application queue for batching
+        self.application_queue = deque()
+
+        # Status update queue for batching (processed after application queue)
+        self.status_update_queue = deque()
+
         self._connect()
 
     def _load_roles_from_sheet(self) -> List[ElectionStructureRow]:
@@ -68,7 +75,8 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             div_fi_col = headers.index("Division_FI") + 1
             role_fi_col = headers.index("Role_FI") + 1
 
-            missing_count = 0
+            # Collect all missing IDs for bulk update
+            updates = []
             for row_idx, row in enumerate(all_values[1:], start=2):
                 id_val = row[id_col - 1] if len(row) >= id_col else ""
                 if not id_val:
@@ -76,11 +84,18 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     role_fi = row[role_fi_col - 1] if len(row) >= role_fi_col else ""
                     if division_fi and role_fi:
                         new_id = self.generate_role_id()
-                        self.election_sheet.update_cell(row_idx, id_col, new_id)
-                        missing_count += 1
+                        # Store the cell reference and new ID for bulk update
+                        updates.append(
+                            {
+                                "range": f"{chr(64 + id_col)}{row_idx}",  # Convert column number to letter
+                                "values": [[new_id]],
+                            }
+                        )
 
-            if missing_count:
-                logger.info("Assigned IDs to %s role rows without IDs", missing_count)
+            # Perform bulk update if there are missing IDs
+            if updates:
+                self.election_sheet.batch_update(updates)
+                logger.info("Assigned IDs to %s role rows without IDs", len(updates))
 
             return self.election_sheet.get_all_records()
 
@@ -264,7 +279,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         status: str = "",
         language: str = "en",
     ) -> bool:
-        """Add a new application."""
+        """Queue a new application for batch processing."""
         try:
             # Check if application already exists
             if self.check_application_exists(role_id, telegram_id):
@@ -275,29 +290,105 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 )
                 return False
 
-            # Find next empty row
-            next_row = len(self.applications_sheet.col_values(1)) + 1
+            # Check if application is already in queue
+            for queued_app in self.application_queue:
+                if (
+                    queued_app["role_id"] == role_id
+                    and queued_app["telegram_id"] == telegram_id
+                ):
+                    logger.warning(
+                        "Application already queued for role %s and user %s",
+                        role_id,
+                        telegram_id,
+                    )
+                    return False
 
-            # Add the application data
-            row_data = [
-                role_id,
-                telegram_id,
-                name,
-                email,
-                telegram_username,
-                fiirumi_post,
-                status,
-                language,
-            ]
-            self.applications_sheet.update(f"A{next_row}:H{next_row}", [row_data])
+            # Add to queue instead of directly to sheets
+            application_data = {
+                "role_id": role_id,
+                "telegram_id": telegram_id,
+                "name": name,
+                "email": email,
+                "telegram_username": telegram_username,
+                "fiirumi_post": fiirumi_post,
+                "status": status,
+                "language": language,
+            }
+            self.application_queue.append(application_data)
 
             logger.info(
-                "Added application for role %s by user %s", role_id, telegram_id
+                "Queued application for role %s by user %s", role_id, telegram_id
             )
             return True
 
         except Exception as e:
-            logger.error("Error adding application: %s", e)
+            logger.error("Error queueing application: %s", e)
+            return False
+
+    def flush_application_queue(self) -> bool:
+        """Flush all queued applications to Google Sheets in a single batch operation."""
+        try:
+            if not self.application_queue:
+                logger.debug("No applications in queue to flush")
+                return True
+
+            # Convert queue to list and clear queue
+            applications_to_add = list(self.application_queue)
+            self.application_queue.clear()
+
+            # Double-check for existing applications (in case they were added while queued)
+            new_applications = []
+            for app in applications_to_add:
+                if not self.check_application_exists(
+                    app["role_id"], app["telegram_id"]
+                ):
+                    new_applications.append(app)
+                else:
+                    logger.warning(
+                        "Skipping duplicate application for role %s and user %s",
+                        app["role_id"],
+                        app["telegram_id"],
+                    )
+
+            if not new_applications:
+                logger.info("No new applications to add (all were duplicates)")
+                return True
+
+            # Find the starting row for new applications
+            start_row = len(self.applications_sheet.col_values(1)) + 1
+
+            # Prepare batch data
+            batch_data = []
+            for app in new_applications:
+                row_data = [
+                    app["role_id"],
+                    app["telegram_id"],
+                    app["name"],
+                    app["email"],
+                    app["telegram_username"],
+                    app["fiirumi_post"],
+                    app["status"],
+                    app["language"],
+                ]
+                batch_data.append(row_data)
+
+            # Calculate the range for batch update
+            end_row = start_row + len(batch_data) - 1
+            range_str = f"A{start_row}:H{end_row}"
+
+            # Perform batch update
+            self.applications_sheet.update(range_str, batch_data)
+
+            logger.info(
+                "Flushed %d applications from queue to sheets", len(new_applications)
+            )
+            return True
+
+        except Exception as e:
+            logger.error("Error flushing application queue: %s", e)
+            # Re-queue the applications if they failed to flush
+            for app in applications_to_add:
+                self.application_queue.append(app)
             return False
 
     def check_application_exists(self, role_id: str, telegram_id: int) -> bool:
@@ -336,9 +427,58 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         status: str = None,
         fiirumi_post: str = None,
     ) -> bool:
-        """Update application status."""
+        """Queue an application status update for batch processing."""
         try:
-            # Find the application row
+            # Check if there's already an update for this application in the queue
+            for queued_update in self.status_update_queue:
+                if (
+                    queued_update["role_id"] == role_id
+                    and queued_update["telegram_id"] == telegram_id
+                ):
+                    # Update existing queue entry
+                    if status is not None:
+                        queued_update["status"] = status
+                    if fiirumi_post is not None:
+                        queued_update["fiirumi_post"] = fiirumi_post
+                    logger.info(
+                        "Updated queued status change for role %s, user %s",
+                        role_id,
+                        telegram_id,
+                    )
+                    return True
+
+            # Add new status update to queue
+            status_update = {
+                "role_id": role_id,
+                "telegram_id": telegram_id,
+                "status": status,
+                "fiirumi_post": fiirumi_post,
+            }
+            self.status_update_queue.append(status_update)
+
+            logger.info(
+                "Queued status update for role %s, user %s",
+                role_id,
+                telegram_id,
+            )
+            return True
+
+        except Exception as e:
+            logger.error("Error queueing status update: %s", e)
+            return False
+
+    def flush_status_update_queue(self) -> bool:
+        """Flush all queued status updates to Google Sheets in a single batch operation."""
+        try:
+            if not self.status_update_queue:
+                logger.debug("No status updates in queue to flush")
+                return True
+
+            # Convert queue to list and clear queue
+            updates_to_process = list(self.status_update_queue)
+            self.status_update_queue.clear()
+
+            # Get current sheet data once
             all_data = self.applications_sheet.get_all_values()
             headers = all_data[0]
 
@@ -348,36 +488,64 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             status_col = headers.index("Status") + 1
             fiirumi_col = headers.index("Fiirumi_Post") + 1
 
-            # Find the row
-            for i, row in enumerate(all_data[1:], start=2):  # Start from row 2
-                if (
-                    len(row) > max(role_id_col, telegram_id_col) - 1
-                    and row[role_id_col - 1] == role_id
-                    and str(row[telegram_id_col - 1]) == str(telegram_id)
-                ):
+            # Prepare batch updates
+            batch_updates = []
+            processed_count = 0
 
-                    # Update the specific fields
-                    if status is not None:
-                        self.applications_sheet.update_cell(i, status_col, status)
-                    if fiirumi_post is not None:
-                        self.applications_sheet.update_cell(
-                            i, fiirumi_col, fiirumi_post
-                        )
+            for update_data in updates_to_process:
+                role_id = update_data["role_id"]
+                telegram_id = update_data["telegram_id"]
+                status = update_data["status"]
+                fiirumi_post = update_data["fiirumi_post"]
 
-                    logger.info(
-                        "Updated application status for role %s, user %s",
+                # Find the row for this application
+                row_found = False
+                for i, row in enumerate(all_data[1:], start=2):  # Start from row 2
+                    if (
+                        len(row) > max(role_id_col, telegram_id_col) - 1
+                        and row[role_id_col - 1] == role_id
+                        and str(row[telegram_id_col - 1]) == str(telegram_id)
+                    ):
+                        # Add updates for this row
+                        if status is not None:
+                            batch_updates.append(
+                                {
+                                    "range": f"{chr(64 + status_col)}{i}",
+                                    "values": [[status]],
+                                }
+                            )
+                        if fiirumi_post is not None:
+                            batch_updates.append(
+                                {
+                                    "range": f"{chr(64 + fiirumi_col)}{i}",
+                                    "values": [[fiirumi_post]],
+                                }
+                            )
+                        processed_count += 1
+                        row_found = True
+                        break
+
+                if not row_found:
+                    logger.warning(
+                        "Application not found for queued status update: role %s, user %s",
                         role_id,
                         telegram_id,
                     )
-                    return True
 
-            logger.warning(
-                "Application not found for role %s, user %s", role_id, telegram_id
+            # Perform batch update if there are any updates
+            if batch_updates:
+                self.applications_sheet.batch_update(batch_updates)
+
+            logger.info(
+                "Flushed %d status updates from queue to sheets", processed_count
             )
-            return False
+            return True
 
         except Exception as e:
-            logger.error("Error updating application status: %s", e)
+            logger.error("Error flushing status update queue: %s", e)
+            # Re-queue the updates if they failed to flush
+            for update_data in updates_to_process:
+                self.status_update_queue.append(update_data)
             return False
 
     def get_election_data(
@@ -584,13 +752,18 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
             for i, row in enumerate(all_data[1:], start=2):  # Start from row 2
                 if len(row) > 0 and row[0] == post_id:
-
-                    self.question_posts_sheet.update_cell(
-                        i, posts_count_col, posts_count
-                    )
-                    self.question_posts_sheet.update_cell(
-                        i, last_updated_col, datetime.now().isoformat()
-                    )
+                    # Update both fields using bulk update
+                    updates = [
+                        {
+                            "range": f"{chr(64 + posts_count_col)}{i}",
+                            "values": [[posts_count]],
+                        },
+                        {
+                            "range": f"{chr(64 + last_updated_col)}{i}",
+                            "values": [[datetime.now().isoformat()]],
+                        },
+                    ]
+                    self.question_posts_sheet.batch_update(updates)
                     logger.info(
                         "Updated question post %s count to %s", post_id, posts_count
                     )

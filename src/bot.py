@@ -82,6 +82,29 @@ async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.warning("Update '%s' caused error '%s'", update, context.error)
 
 
+async def process_application_queue(
+    _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
+):
+    """Flush queued applications and status updates to Google Sheets."""
+    try:
+        # First flush new applications
+        app_success = data_manager.sheets_manager.flush_application_queue()
+        if app_success:
+            logger.debug("Successfully flushed application queue")
+        else:
+            logger.warning("Failed to flush application queue")
+
+        # Then flush status updates (after applications exist)
+        status_success = data_manager.sheets_manager.flush_status_update_queue()
+        if status_success:
+            logger.debug("Successfully flushed status update queue")
+        else:
+            logger.warning("Failed to flush status update queue")
+
+    except Exception as e:
+        logger.error("Error in queue processing job: %s", e)
+
+
 async def post_init(app: Application, data_manager: DataManager):
     """Post initialization setup."""
     jq = app.job_queue
@@ -102,6 +125,12 @@ async def post_init(app: Application, data_manager: DataManager):
         lambda context: update_election_sheet(context, data_manager),
         interval=60,
         first=0,
+    )
+
+    jq.run_repeating(
+        lambda context: process_application_queue(context, data_manager),
+        interval=60,
+        first=10,  # Start after 10 seconds to let the bot initialize
     )
 
     # Admin command handlers
