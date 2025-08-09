@@ -59,47 +59,11 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         # Status update queue for batching (processed after application queue)
         self.status_update_queue = deque()
 
+        # Channel operation queues for batching
+        self.channel_add_queue = deque()
+        self.channel_remove_queue = deque()
+
         self._connect()
-
-    def _load_roles_from_sheet(self) -> List[ElectionStructureRow]:
-        """Load roles from sheet and ensure IDs exist, writing back any missing IDs."""
-        try:
-            all_values = self.election_sheet.get_all_values()
-            if not all_values:
-                return []
-
-            headers = all_values[0]
-            id_col = headers.index("ID") + 1
-            div_fi_col = headers.index("Division_FI") + 1
-            role_fi_col = headers.index("Role_FI") + 1
-
-            # Collect all missing IDs for bulk update
-            updates = []
-            for row_idx, row in enumerate(all_values[1:], start=2):
-                id_val = row[id_col - 1] if len(row) >= id_col else ""
-                if not id_val:
-                    division_fi = row[div_fi_col - 1] if len(row) >= div_fi_col else ""
-                    role_fi = row[role_fi_col - 1] if len(row) >= role_fi_col else ""
-                    if division_fi and role_fi:
-                        new_id = self.generate_role_id()
-                        # Store the cell reference and new ID for bulk update
-                        updates.append(
-                            {
-                                "range": f"{chr(64 + id_col)}{row_idx}",  # Convert column number to letter
-                                "values": [[new_id]],
-                            }
-                        )
-
-            # Perform bulk update if there are missing IDs
-            if updates:
-                self.election_sheet.batch_update(updates)
-                logger.info("Assigned IDs to %s role rows without IDs", len(updates))
-
-            return self.election_sheet.get_all_records()
-
-        except Exception as e:
-            logger.error("Error getting roles: %s", e)
-            return []
 
     def _connect(self):
         """Establish connection to Google Sheets."""
@@ -195,13 +159,45 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
     @cached(cache=_roles_cache)
     def get_all_roles(self) -> List[ElectionStructureRow]:
-        """Get all roles with caching and ensure IDs exist when cache refreshes."""
-        return self._load_roles_from_sheet()
+        """Get all roles with caching and ensure IDs exist when cache refreshes.
+        Also ensures that every role has a unique ID."""
+        try:
+            all_values = self.election_sheet.get_all_values()
+            if not all_values:
+                return []
 
-    def get_roles_by_division(self, division_fi: str) -> List[ElectionStructureRow]:
-        """Get all roles for a specific division (uses cached roles)."""
-        all_roles = self.get_all_roles()
-        return [role for role in all_roles if role["Division_FI"] == division_fi]
+            headers = all_values[0]
+            id_col = headers.index("ID") + 1
+            div_fi_col = headers.index("Division_FI") + 1
+            role_fi_col = headers.index("Role_FI") + 1
+
+            # Collect all missing IDs for bulk update
+            updates = []
+            for row_idx, row in enumerate(all_values[1:], start=2):
+                id_val = row[id_col - 1] if len(row) >= id_col else ""
+                if not id_val:
+                    division_fi = row[div_fi_col - 1] if len(row) >= div_fi_col else ""
+                    role_fi = row[role_fi_col - 1] if len(row) >= role_fi_col else ""
+                    if division_fi and role_fi:
+                        new_id = self.generate_role_id()
+                        # Store the cell reference and new ID for bulk update
+                        updates.append(
+                            {
+                                "range": f"{chr(64 + id_col)}{row_idx}",  # Convert column number to letter
+                                "values": [[new_id]],
+                            }
+                        )
+
+            # Perform bulk update if there are missing IDs
+            if updates:
+                self.election_sheet.batch_update(updates)
+                logger.info("Assigned IDs to %s role rows without IDs", len(updates))
+
+            return self.election_sheet.get_all_records()
+
+        except Exception as e:
+            logger.error("Error getting roles: %s", e)
+            return []
 
     def get_divisions(self) -> List[DivisionDict]:
         """Get unique divisions (derived from cached roles)."""
@@ -517,6 +513,62 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 self.status_update_queue.append(update_data)
             return False
 
+    def flush_channel_queue(self) -> bool:
+        """Flush all queued channel operations to Google Sheets in batch operations."""
+        channels_to_add = []
+        channels_to_remove = []
+
+        try:
+            # Process channel additions
+            if self.channel_add_queue:
+                channels_to_add = list(self.channel_add_queue)
+                self.channel_add_queue.clear()
+
+                # Prepare batch data for additions
+                current_row = len(self.channels_sheet.col_values(1)) + 1
+                batch_data = []
+
+                for chat_id in channels_to_add:
+                    batch_data.append([chat_id, datetime.now().isoformat()])
+
+                if batch_data:
+                    range_end = current_row + len(batch_data) - 1
+                    self.channels_sheet.update(
+                        f"A{current_row}:B{range_end}", batch_data
+                    )
+                    logger.info("Added %d channels in batch", len(batch_data))
+
+            # Process channel removals
+            if self.channel_remove_queue:
+                channels_to_remove = list(self.channel_remove_queue)
+                self.channel_remove_queue.clear()
+
+                # Get current sheet data
+                all_data = self.channels_sheet.get_all_values()
+
+                # Find rows to delete (collect indices in reverse order)
+                rows_to_delete = []
+                for i, row in enumerate(all_data[1:], start=2):  # Start from row 2
+                    if len(row) > 0 and int(row[0]) in channels_to_remove:
+                        rows_to_delete.append(i)
+
+                # Delete rows in reverse order to maintain correct indices
+                for row_index in reversed(rows_to_delete):
+                    self.channels_sheet.delete_rows(row_index)
+
+                logger.info("Removed %d channels in batch", len(rows_to_delete))
+
+            return True
+
+        except Exception as e:
+            logger.error("Error flushing channel queue: %s", e)
+            # Re-queue the operations if they failed to flush
+            for chat_id in channels_to_add:
+                self.channel_add_queue.append(chat_id)
+            for chat_id in channels_to_remove:
+                self.channel_remove_queue.append(chat_id)
+            return False
+
     def get_election_data(
         self, invalidate_cache: bool = False
     ) -> Dict[str, DivisionData]:
@@ -596,42 +648,71 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             return []
 
     def add_channel(self, chat_id: int) -> bool:
-        """Add a new channel."""
+        """Queue a channel to be added."""
         try:
-            # Check if channel already exists
+            # Check if already queued for addition
+            if any(queued_id == chat_id for queued_id in self.channel_add_queue):
+                logger.info("Channel %s already queued for addition", chat_id)
+                return True
+
+            # If queued for removal, remove from remove queue instead of adding to add queue
+            try:
+                self.channel_remove_queue.remove(chat_id)
+                logger.info(
+                    "Removed channel %s from remove queue (cancelled removal)", chat_id
+                )
+                return True
+            except ValueError:
+                pass  # Not in remove queue, continue with normal add logic
+
+            # Check if channel already exists in current data
             existing_channels = self.get_all_channels()
-            if any(channel.Channel_ID == chat_id for channel in existing_channels):
+            if any(channel["Channel_ID"] == chat_id for channel in existing_channels):
                 logger.info("Channel %s already exists", chat_id)
                 return True
 
-            # Add new channel
-            next_row = len(self.channels_sheet.col_values(1)) + 1
-            row_data = [chat_id, datetime.now().isoformat()]
-            self.channels_sheet.update(f"A{next_row}:B{next_row}", [row_data])
-
-            logger.info("Added channel %s", chat_id)
+            # Queue for addition
+            self.channel_add_queue.append(chat_id)
+            logger.info("Queued channel %s for addition", chat_id)
             return True
 
         except Exception as e:
-            logger.error("Error adding channel: %s", e)
+            logger.error("Error queueing channel addition: %s", e)
             return False
 
     def remove_channel(self, chat_id: int) -> bool:
-        """Remove a channel."""
+        """Queue a channel to be removed."""
         try:
-            # Find the row with this chat_id
-            all_data = self.channels_sheet.get_all_values()
-            for i, row in enumerate(all_data[1:], start=2):  # Start from row 2
-                if len(row) > 0 and str(row[0]) == str(chat_id):
-                    self.channels_sheet.delete_rows(i)
-                    logger.info("Removed channel %s", chat_id)
-                    return True
+            # Check if already queued for removal
+            if any(queued_id == chat_id for queued_id in self.channel_remove_queue):
+                logger.info("Channel %s already queued for removal", chat_id)
+                return True
 
-            logger.warning("Channel %s not found", chat_id)
-            return False
+            # If queued for addition, remove from add queue instead of adding to remove queue
+            try:
+                self.channel_add_queue.remove(chat_id)
+                logger.info(
+                    "Removed channel %s from add queue (cancelled addition)", chat_id
+                )
+                return True
+            except ValueError:
+                pass  # Not in add queue, continue with normal remove logic
+
+            # Check if channel exists in current data
+            existing_channels = self.get_all_channels()
+            if not any(
+                channel["Channel_ID"] == chat_id for channel in existing_channels
+            ):
+                logger.warning("Channel %s not found in current data", chat_id)
+                return False
+
+            # Queue for removal
+            self.channel_remove_queue.append(chat_id)
+            logger.info("Queued channel %s for removal", chat_id)
+            return True
 
         except Exception as e:
-            logger.error("Error removing channel: %s", e)
+            logger.error("Error queueing channel removal: %s", e)
             return False
 
     def get_all_pending_applications(self) -> List[Dict]:

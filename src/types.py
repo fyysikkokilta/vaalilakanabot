@@ -40,14 +40,6 @@ class DivisionDict(TypedDict):
     en: str
 
 
-class PositionDict(TypedDict):
-    """Position dictionary."""
-
-    fi: str
-    en: str
-    division: str
-
-
 class ApplicantDict(TypedDict):
     """Applicant dictionary."""
 

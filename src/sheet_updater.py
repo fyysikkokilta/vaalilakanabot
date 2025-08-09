@@ -31,21 +31,18 @@ def data_to_markdown(data: Dict[str, DivisionData]) -> str:
             role_amount = role_data["amount"]
             role_application_dl = role_data["application_dl"]
             role_applicants = role_data["applicants"]
+            role_tag = None
 
             # Determine if the role is a board role or official role
             if role_data.get("type") == "BOARD":
                 role_tag = "**"
             elif role_data.get("type") in ("ELECTED", "AUDITOR"):
                 role_tag = "*"
-            else:
-                role_tag = None
 
             role_row = ""
             if role_tag:
                 role_row += role_tag
-            role_row += role_title
-            if role_title_en != role_title:
-                role_row += f" / {role_title_en}"
+            role_row += f"{role_title} / {role_title_en}"
             if role_amount:
                 role_row += f" ({role_amount})"
             if role_application_dl:

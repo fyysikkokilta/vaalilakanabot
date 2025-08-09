@@ -9,7 +9,6 @@ from .sheets_manager import SheetsManager
 from .types import (
     ElectionStructureRow,
     DivisionDict,
-    PositionDict,
     ApplicantDict,
     DivisionData,
     RoleData,
@@ -49,36 +48,13 @@ class DataManager:
         """Get all roles from Google Sheets with caching."""
         return self.sheets_manager.get_all_roles()
 
-    def get_all_divisions(self) -> List[DivisionDict]:
-        """Get all divisions with caching."""
-        return self.sheets_manager.get_divisions()
-
-    def find_position_by_name(self, position_name: str) -> Optional[str]:
-        """Find position by Finnish or English name."""
-        role: Optional[ElectionStructureRow] = self.find_role_by_name(position_name)
-        if role:
-            return role["Role_FI"]
-        return None
-
     def find_role_by_name(self, role_name: str) -> Optional[ElectionStructureRow]:
         """Find a role by name using SheetsManager's cached lookup."""
         return self.sheets_manager.find_role_by_name(role_name)
 
-    def get_all_positions(self) -> List[PositionDict]:
-        """Get all positions with both Finnish and English names."""
-        roles = self.get_all_roles()
-        return [
-            {
-                "fi": role["Role_FI"],
-                "en": role["Role_EN"],
-                "division": role["Division_FI"],
-            }
-            for role in roles
-        ]
-
     def get_divisions(self, is_finnish: bool = True) -> tuple[List[str], List[str]]:
         """Get divisions with localization."""
-        divisions: List[DivisionDict] = self.get_all_divisions()
+        divisions: List[DivisionDict] = self.sheets_manager.get_divisions()
         localized_divisions: List[str] = [
             division["fi"] if is_finnish else division["en"] for division in divisions
         ]

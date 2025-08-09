@@ -118,12 +118,12 @@ async def remove_applicant(
             raise ValueError("Invalid parameters") from e
 
         # Find position by Finnish or English name
-        found_position = data_manager.find_position_by_name(position)
+        found_position = data_manager.find_role_by_name(position)
         if not found_position:
             # Show available positions
-            all_positions = data_manager.get_all_positions()
+            all_positions = data_manager.get_all_roles()
             position_list = "\n".join(
-                [f"• {pos['fi']} / {pos['en']}" for pos in all_positions[:20]]
+                [f"• {pos['Role_FI']} / {pos['Role_EN']}" for pos in all_positions[:20]]
             )  # Limit to first 20
             await update.message.reply_text(
                 f"Unknown position: {position}\n\n"
@@ -162,7 +162,7 @@ async def add_fiirumi_to_applicant(update: Update, data_manager: DataManager):
             raise ValueError("Invalid parameters") from e
 
         # Find position by Finnish or English name
-        found_position = data_manager.find_position_by_name(position)
+        found_position = data_manager.find_role_by_name(position)
         if not found_position:
             await update.message.reply_text(f"Unknown position: {position}")
             return
@@ -196,7 +196,7 @@ async def unassociate_fiirumi(update: Update, data_manager: DataManager):
             return
 
         # Find position by Finnish or English name
-        found_position = data_manager.find_position_by_name(position)
+        found_position = data_manager.find_role_by_name(position)
         if not found_position:
             await update.message.reply_text(f"Unknown position: {position}")
             return
@@ -228,7 +228,7 @@ async def add_elected_tag(
             raise ValueError from e
 
         # Find position by Finnish or English name
-        found_position = data_manager.find_position_by_name(position)
+        found_position = data_manager.find_role_by_name(position)
         if not found_position:
             await update.message.reply_text(f"Unknown position: {position}")
             return

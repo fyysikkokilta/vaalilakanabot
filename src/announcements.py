@@ -35,12 +35,12 @@ async def announce_to_channels(
     for channel in data_manager.channels:
         try:
             await context.bot.send_message(
-                channel.Channel_ID, message, parse_mode="HTML"
+                channel["Channel_ID"], message, parse_mode="HTML"
             )
             time.sleep(0.5)
         except Exception as e:
             logger.error(e)
-            data_manager.remove_channel(channel.Channel_ID)
+            data_manager.remove_channel(channel["Channel_ID"])
             continue
 
 
