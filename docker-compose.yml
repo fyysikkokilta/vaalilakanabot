@@ -1,10 +1,10 @@
 services:
   bot:
     build: .
-    volumes:
-      - ./data:/bot/data:rw
     env_file:
       - bot.env
+    volumes:
+      - ./google_credentials.json:/bot/google_credentials.json
     restart: always
     logging:
       driver: "json-file"

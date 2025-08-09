@@ -1,9 +1,8 @@
 *.env
 
-#Exclude all but example data
-data/*
-!example*
-
 __pycache__/
 
 .vscode/
+
+# Local service account credentials (not committed)
+google_credentials.json

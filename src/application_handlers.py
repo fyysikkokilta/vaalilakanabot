@@ -1,7 +1,7 @@
 """Application conversation handlers."""
 
 import logging
-import uuid
+import re
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler, ContextTypes
@@ -12,16 +12,24 @@ from .config import (
     GIVING_NAME,
     GIVING_EMAIL,
     CONFIRMING_APPLICATION,
-    BOARD,
-    ELECTED_OFFICIALS,
 )
 from .utils import generate_keyboard
 from .admin_approval import send_admin_approval_request
+from .sheets_data_manager import DataManager
 
 logger = logging.getLogger("vaalilakanabot")
 
 
-async def hae(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager) -> int:
+def is_valid_email(email: str) -> bool:
+    """Basic email format validation."""
+    # Simple regex pattern for basic email validation
+    pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    return bool(re.match(pattern, email))
+
+
+async def hae(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
+) -> int:
     """Apply for a position in Finnish."""
     chat_data = context.chat_data
     chat_data["is_finnish"] = True
@@ -37,7 +45,7 @@ async def hae(update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager) 
 
 
 async def apply(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> int:
     """Apply for a position in English."""
     chat_data = context.chat_data
@@ -54,7 +62,7 @@ async def apply(
 
 
 async def select_division(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> int:
     """Handle division selection."""
     query = update.callback_query
@@ -84,7 +92,7 @@ async def select_division(
 
 
 async def select_role(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> int:
     """Handle role selection."""
     query = update.callback_query
@@ -105,9 +113,10 @@ async def select_role(
         return ConversationHandler.END
 
     # Check if user has a pending application for elected roles
-    if (
-        position in BOARD + ELECTED_OFFICIALS
-        and data_manager.check_pending_application_exists(position, user_id)
+    role_row = data_manager.find_role_by_name(position)
+    is_elected_type = role_row and role_row.get("Type") in ("BOARD", "ELECTED")
+    if is_elected_type and data_manager.check_pending_application_exists(
+        position, user_id
     ):
         text = (
             "Sinulla on jo odottava hakemus tähän rooliin!"
@@ -118,33 +127,36 @@ async def select_role(
         return ConversationHandler.END
 
     # Check if user already has an approved or pending application for any elected role
-    if position in BOARD + ELECTED_OFFICIALS:
+    if is_elected_type:
         has_elected_application = False
         elected_position = ""
 
         # Check for approved applications to elected roles
-        for division in data_manager.vaalilakana.values():
-            for role_title, role_data in division["roles"].items():
-                if role_title in BOARD + ELECTED_OFFICIALS:
-                    for applicant in role_data["applicants"]:
-                        if applicant["user_id"] == user_id:
-                            has_elected_application = True
-                            elected_position = role_title
-                            break
-                    if has_elected_application:
+        for role_title, role_data in data_manager.vaalilakana.items():
+            if role_data.get("type") in ("BOARD", "ELECTED"):
+                for applicant in role_data.get("applicants", []):
+                    if applicant["user_id"] == user_id:
+                        has_elected_application = True
+                        elected_position = role_title
                         break
             if has_elected_application:
                 break
 
-        # Check for pending applications to elected roles
+        # Check for pending applications to elected roles using Applications sheet rows
         if not has_elected_application:
-            for app_id, application in data_manager.pending_applications.items():
-                if (
-                    application["applicant"]["user_id"] == user_id
-                    and application["position"] in BOARD + ELECTED_OFFICIALS
-                ):
+            for app_row in data_manager.pending_applications:
+                if int(app_row.get("Telegram_ID", 0)) != int(user_id):
+                    continue
+
+                role_id = app_row.get("Role_ID", "")
+                if not role_id:
+                    continue
+                # Find role by ID and ensure it's an elected type
+                roles = data_manager.get_all_roles()
+                rr = next((r for r in roles if r.get("ID") == role_id), None)
+                if rr and rr.get("Type") in ("BOARD", "ELECTED"):
                     has_elected_application = True
-                    elected_position = application["position"]
+                    elected_position = rr.get("Role_FI", "") or rr.get("Role_EN", "")
                     break
 
         if has_elected_application:
@@ -186,22 +198,23 @@ async def select_role(
             chat_data["loc_position"] = (
                 chat_data["position"]
                 if chat_data["is_finnish"]
-                else data_manager.vaalilakana[chat_data["division"]]["roles"][position][
-                    "title_en"
-                ]
+                else (
+                    data_manager.find_role_by_name(position, chat_data["division"])
+                    or {}
+                ).get("Role_EN", position)
             )
-            chat_data["is_elected"] = chat_data["position"] in ELECTED_OFFICIALS + BOARD
+            chat_data["is_elected"] = True
             return SELECTING_ROLE
 
     chat_data["position"] = position
     chat_data["loc_position"] = (
         chat_data["position"]
         if chat_data["is_finnish"]
-        else data_manager.vaalilakana[chat_data["division"]]["roles"][position][
-            "title_en"
-        ]
+        else (
+            data_manager.find_role_by_name(position, chat_data["division"]) or {}
+        ).get("Role_EN", position)
     )
-    chat_data["is_elected"] = chat_data["position"] in ELECTED_OFFICIALS + BOARD
+    chat_data["is_elected"] = bool(is_elected_type)
 
     elected_role_text = "vaaleilla valittavaan " if chat_data["is_elected"] else ""
     elected_role_text_en = "elected " if chat_data["is_elected"] else ""
@@ -217,12 +230,31 @@ async def select_role(
     return GIVING_NAME
 
 
-async def enter_name(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
-) -> int:
+async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle name input."""
     chat_data = context.chat_data
-    name = update.message.text
+    name = update.message.text.strip()
+
+    # Validate that name doesn't contain commas (interferes with admin commands)
+    if "," in name:
+        error_text = (
+            "Nimi ei voi sisältää pilkkuja. Anna nimesi uudelleen:"
+            if chat_data["is_finnish"]
+            else "Name cannot contain commas. Please enter your name again:"
+        )
+        await update.message.reply_text(error_text)
+        return GIVING_NAME
+
+    # Validate that name is not empty after stripping
+    if not name:
+        error_text = (
+            "Nimi ei voi olla tyhjä. Anna nimesi:"
+            if chat_data["is_finnish"]
+            else "Name cannot be empty. Please enter your name:"
+        )
+        await update.message.reply_text(error_text)
+        return GIVING_NAME
+
     chat_data["name"] = name
     text = (
         "Mikä on sähköpostiosoitteesi?"
@@ -233,12 +265,21 @@ async def enter_name(
     return GIVING_EMAIL
 
 
-async def enter_email(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
-) -> int:
+async def enter_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle email input."""
     chat_data = context.chat_data
-    email = update.message.text
+    email = update.message.text.strip()
+
+    # Validate email format
+    if not is_valid_email(email):
+        error_text = (
+            "Sähköpostiosoite ei ole kelvollinen. Anna sähköpostiosoite muodossa: nimi@domain.fi"
+            if chat_data["is_finnish"]
+            else "Email address is not valid. Please provide an email in format: name@domain.com"
+        )
+        await update.message.reply_text(error_text)
+        return GIVING_EMAIL  # Stay in the same state to ask for email again
+
     chat_data["email"] = email
     chat_data["telegram"] = update.message.from_user.username
 
@@ -288,7 +329,7 @@ async def enter_email(
 
 
 async def confirm_application(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> int:
     """Handle application confirmation."""
     query = update.callback_query
@@ -301,7 +342,6 @@ async def confirm_application(
             position = chat_data["position"]
             email = chat_data["email"]
             telegram = chat_data["telegram"]
-            division = data_manager.find_division_for_position(position)
 
             new_applicant = {
                 "user_id": update.effective_user.id,
@@ -309,28 +349,29 @@ async def confirm_application(
                 "email": email,
                 "telegram": telegram,
                 "fiirumi": "",
-                "valittu": False,
+                "status": "",
             }
 
-            # Check if this is an elected role that needs admin approval
-            if position in BOARD + ELECTED_OFFICIALS:
-                # Generate unique application ID
-                application_id = str(uuid.uuid4())
-
+            # Check if this is an elected role that needs admin approval via Role Type
+            role_row = data_manager.find_role_by_name(position)
+            needs_approval = role_row and role_row.get("Type") in ("BOARD", "ELECTED")
+            if needs_approval:
                 # Create pending application
                 application_data = {
                     "applicant": new_applicant,
                     "position": position,
-                    "division": division,
                     "language": "fi" if chat_data["is_finnish"] else "en",
                 }
 
                 # Add to pending applications
-                data_manager.add_pending_application(application_id, application_data)
+                data_manager.add_pending_application(application_data)
 
                 # Send admin approval request
                 await send_admin_approval_request(
-                    context, data_manager, application_id, application_data
+                    context,
+                    data_manager,
+                    f"{role_row['ID']}_{new_applicant['user_id']}",
+                    application_data,
                 )
 
                 text = (
@@ -339,8 +380,10 @@ async def confirm_application(
                     else "Your application has been sent and is awaiting admin approval. You will be notified when it's processed."
                 )
             else:
-                # For non-elected roles, add directly
-                data_manager.add_applicant(division, position, new_applicant)
+                # For non-elected roles, add directly with APPROVED status
+                new_applicant["status"] = "APPROVED"
+                language = "fi" if chat_data["is_finnish"] else "en"
+                data_manager.add_applicant(position, new_applicant, language)
 
                 text = (
                     "Hakemuksesi on vastaanotettu. Kiitos!"
@@ -358,15 +401,12 @@ async def confirm_application(
             await query.edit_message_text(text, reply_markup=None)
 
     except Exception as e:
-        # TODO: Return to role selection
         logger.error(e)
 
     return ConversationHandler.END
 
 
-async def cancel(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
-) -> int:
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancel the current operation."""
     chat_data = context.chat_data
     chat_data.clear()
@@ -375,7 +415,7 @@ async def cancel(
 
 
 async def handle_back_button(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> int:
     """Handle back button press to return to division selection."""
     query = update.callback_query
@@ -401,7 +441,7 @@ async def handle_back_button(
 
 
 async def handle_multiple_application_choice(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager
+    update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     """Handle user choice when applying to multiple elected roles."""
     query = update.callback_query

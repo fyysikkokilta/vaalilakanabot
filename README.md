@@ -25,17 +25,18 @@ This project uses GitHub Actions for continuous integration and deployment:
 
 ## Setup
 
-- Install the `python-telegram-bot` library (version >=21) and other required libraries.
+- Install the required libraries: `pip install -r requirements.txt`
 - Create a Telegram bot with Bot Father and save the bot token.
 - Create a Discourse API key for the bot.
 - Create an admin Telegram group and save its ID, for example using the `@RawDataBot`.
-- Create the election sheet for Fiirumi.
-  - The message containing the election sheet must not have any text other than the election sheet itself.
-  - Division names must be written in ALL CAPS, and each line should contain only the Finnish and English translations separated by a `/`.
-  - Role lines must follow the format:  
-    `{Finnish name} / {English name} ({number of positions}) {application deadline (in the format xx.yy.)}`
-    - Everything except the Finnish name is optional, but the order must be exactly as specified.
+- Set up Google Sheets:
+  - In Google Cloud Console, enable Google Sheets API and Google Drive API
+  - Create a Service Account and download the JSON credentials
+  - Save the credentials file at the project root as `google_credentials.json` (ignored by git)
+  - Create a Google Sheets document and share it with the service account email (Editor permissions)
+  - Set `GOOGLE_SHEET_URL` in `bot.env` to the full URL of your Google Sheet
 - Create `bot.env` according to the example file `bot.env.example`.
+- Initialize election structure in Google Sheets (optional - can be done manually or from forum post)
 - `$ python vaalilakanabot.py`
 - Add the bot to relevant discussion groups.
 
@@ -44,14 +45,8 @@ This project uses GitHub Actions for continuous integration and deployment:
 - Create a Telegram bot and save the bot token.
 - Create Discourse api keys to be used by the bot.
 - Create an admin Telegram group and get the id of the group using, for example, `@RawDataBot`.
-- Create the vaalilakana for Fiirumi.
-  - The message containing the vaalilakana must not have any text other than the vaalilakana itself.
-  - Division names must be written in ALL CAPS, and each line should contain only the Finnish and English translations separated by a `/`.
-  - Role lines must follow the format:  
-    `{Finnish name} / {English name} ({number of positions}) {application deadline (in the format xx.yy.)}`
-    - Everything except the Finnish name is optional, but the order must be exactly as specified.
+- **Set up Google Sheets** with election structure (see Google Sheets Structure below)
 - Create `bot.env` according to the example file `bot.env.example`.
-- Make sure the empty vaalilakana is already created when starting the bot so that the local json is populated.
 
 ### Docker Deployment Options
 
@@ -75,39 +70,46 @@ docker-compose -f docker-compose.prod.yml up
 
 ## Commands
 
-The bot supports the following commands:
+### User Commands
 
-- `/start` Registers the group as the bot's announcement channel and the group receives notifications from the bot.
-- `/lakana` Shows the current election candidate status (in Finnish).
-- `/sheet` Shows the current election candidate status (in English).
-- `/jauhis` Shows an election-themed image.
-- `/jauh` Shows an election-themed image.
-- `/jauho` Shows an election-themed image.
-- `/lauh` Shows an election-themed image.
-- `/mauh` Shows an election-themed image.
-- `/hae` Starts filling out the application form in Finnish.
-- `/apply` Starts filling out the application form in English.
-- `/help` Shows the English help guide.
-- `/apua` Shows the Finnish help guide.
+- `/start` - Register channel for announcements
+- `/stop` - Unregister channel from announcements
+- `/lakana` - Show current election sheet (Finnish)
+- `/sheet` - Show current election sheet (English)
+- `/hakemukset` - Show your applications (Finnish)
+- `/applications` - Show your applications (English)
+- `/hae` - Start application form (Finnish, private chat only)
+- `/apply` - Start application form (English, private chat only)
+- `/apua` - Show help guide (Finnish)
+- `/help` - Show help guide (English)
 
-The following commands are available in the admin chat:
+### Fun Commands
 
-- `/remove` Removes a candidate from the sheet. (also works for non-elected positions; candidates can be removed through the bot)
-- `/add_fiirumi` Adds a candidate's Fiirumi post to the election sheet.
-- `/remove_fiirumi` Removes a Fiirumi post that has been added to the election sheet.
-- `/selected` Marks a candidate as selected for a position in the election sheet. (also works for non-elected positions)
-- `/edit_or_add_new_role` Adds a new role or modifies an existing role in the election sheet.
-- `/remove_role` Removes a role from the election sheet.
-- `/export_data` Creates a CSV file from applicant data.
-- `/export_officials_website` Creates a CSV for importing into the Guild's website.
-- `/pending` Shows all pending applications that require admin approval.
-- `/admin_help` Shows the admin commands help guide.
+- `/jauhis` - Send jauhis sticker
+- `/jauh` - Send jauh sticker
+- `/jauho` - Send jauho sticker
+- `/lauh` - Send lauh sticker
+- `/mauh` - Send mauh sticker
 
-**Note:** Admin commands support both Finnish and English division and role names. If names are not found, the bot will show available options.
+### Admin Commands (Admin Chat Only)
+
+- `/remove <position>, <name>` - Remove applicant from position
+- `/elected <position>, <name>` - Mark applicant as elected
+- `/add_fiirumi <position>, <name>, <thread_id>` - Add Fiirumi link to applicant
+- `/remove_fiirumi <position>, <name>` - Remove Fiirumi link from applicant
+- `/export_officials_website` - Export officials data as CSV for Guild website
+- `/admin_help` - Show detailed admin commands help
+
+**Note:**
+
+- Admin commands support both Finnish and English division and role names
+- If names are not found, the bot will show available options
+- All bot commands work seamlessly with manual Google Sheets editing
+- Changes made directly in Google Sheets sync automatically with the bot
 
 ### Admin Approval
 
-Applications for elected positions (defined in `BOARD` and `ELECTED_OFFICIALS` environment variables) require admin approval:
+Applications for elected positions require admin approval:
 
 1. When a user submits an application for an elected position, the bot sends an approval request to the admin chat.
 2. The admin chat shows the application details and two buttons: "✅ Approve" and "❌ Reject".
@@ -119,6 +121,121 @@ Applications for elected positions (defined in `BOARD` and `ELECTED_OFFICIALS` e
    - The application is removed from the pending list
    - A rejection notification is sent to the applicant
 5. The user cannot submit a new application to the same position as long as the previous application is pending.
+
+## Google Sheets Integration
+
+The bot uses Google Sheets as the complete data storage solution for all bot data (election structure, applications, channels, forum posts, etc.), providing easier admin management and real-time collaboration.
+
+### Benefits
+
+- **Easy admin editing**: Admins can directly edit election data in Google Sheets
+- **Real-time collaboration**: Multiple admins can work simultaneously
+- **Data validation**: Built-in validation prevents common errors
+- **Backup and history**: Google Sheets provides automatic version history
+- **Better organization**: Clear separation between election structure and applications
+
+### Setup Requirements
+
+1. Google account with Google Sheets access
+2. Google Cloud Project with Sheets API enabled
+3. Service Account with appropriate permissions
+
+### Google Sheets Structure
+
+The bot creates and manages 5 worksheets in your Google Sheets document:
+
+#### Sheet 1: "Election Structure"
+
+| Column | Field       | Description                                      |
+| ------ | ----------- | ------------------------------------------------ |
+| A      | ID          | Unique role identifier (auto-generated)          |
+| B      | Division_FI | Division name in Finnish                         |
+| C      | Division_EN | Division name in English                         |
+| D      | Role_FI     | Role name in Finnish                             |
+| E      | Role_EN     | Role name in English                             |
+| F      | Type        | Role type (BOARD, ELECTED, NON-ELECTED, AUDITOR) |
+| G      | Amount      | Number of positions available                    |
+| H      | Deadline    | Application deadline (dd.mm. format)             |
+
+#### Sheet 2: "Applications"
+
+| Column | Field        | Description                                                    |
+| ------ | ------------ | -------------------------------------------------------------- |
+| A      | Role_ID      | Reference to role ID from Election Structure                   |
+| B      | Telegram_ID  | User's Telegram ID                                             |
+| C      | Name         | Applicant's name                                               |
+| D      | Email        | Applicant's email                                              |
+| E      | Telegram     | Telegram username                                              |
+| F      | Fiirumi_Post | Link to forum post                                             |
+| G      | Status       | "APPROVED", "DENIED", "REMOVED", "ELECTED", or empty (pending) |
+| H      | Language     | Language of the application for later announcements            |
+
+#### Sheet 3: "Channels"
+
+| Column | Field      | Description                 |
+| ------ | ---------- | --------------------------- |
+| A      | Chat_ID    | Telegram chat ID            |
+| B      | Added_Date | When channel was registered |
+
+#### Sheet 4: "Fiirumi Posts"
+
+| Column | Field      | Description       |
+| ------ | ---------- | ----------------- |
+| A      | Post_ID    | Forum post ID     |
+| B      | User_ID    | Author's user ID  |
+| C      | Post_Title | Title of the post |
+| D      | Post_Date  | Publication date  |
+| E      | Category   | Forum category    |
+| F      | Topic_ID   | Related topic ID  |
+
+#### Sheet 5: "Question Posts"
+
+| Column | Field        | Description           |
+| ------ | ------------ | --------------------- |
+| A      | Post_ID      | Question post ID      |
+| B      | Topic_ID     | Related topic ID      |
+| C      | Posts_Count  | Number of responses   |
+| D      | Last_Updated | Last update timestamp |
+
+### Admin Workflow
+
+**Adding New Roles:**
+
+1. Open the Google Sheet
+2. Go to "Election Structure" tab
+3. Add a new row with division and role information
+4. ID will be auto-generated
+
+**Managing Applications:**
+
+1. Go to "Applications" tab
+2. Applications added via bot appear automatically
+3. Edit applicant data directly: status, Fiirumi links, etc.
+4. Use bot commands or direct editing for status changes
+5. Status options: APPROVED, DENIED, REMOVED, ELECTED, or empty (pending)
+
+**Monitoring Activity:**
+
+1. Check "Channels" tab to see registered Telegram channels
+2. View "Fiirumi Posts" to track forum activity
+3. Monitor "Question Posts" for Q&A engagement
+4. Review "Applications" tab and filter by Status column:
+   - Empty = Pending applications awaiting approval
+   - "APPROVED" = Approved applications shown on election sheet
+   - "DENIED" = Rejected applications
+   - "ELECTED" = Applicants marked as elected
+   - "REMOVED" = Applicants removed from position
+
+### Data Validation
+
+The system includes built-in validation to prevent the role name consistency issues you were concerned about:
+
+- Unique role IDs prevent string matching problems
+- Real-time validation checks data as you type
+- Duplicate detection highlights duplicate role names
+- Consistency checks ensure role IDs match between sheets
+
+For detailed setup instructions and troubleshooting, see the Google Sheets integration documentation.
 
 ## Additional Information
 

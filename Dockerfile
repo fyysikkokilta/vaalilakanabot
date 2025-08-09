@@ -11,7 +11,6 @@ RUN pip install -r requirements.txt
 COPY assets ./assets
 COPY src ./src
 COPY vaalilakanabot.py vaalilakanabot.py
-COPY createvaalilakana.py createvaalilakana.py
-COPY lakanaupdater.py lakanaupdater.py
+
 
 CMD ["python3", "vaalilakanabot.py"]

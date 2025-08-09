@@ -1,28 +1,19 @@
-from datetime import datetime
-import json
-import os
-import requests
+"""Update the election sheet in Fiirumi."""
 
+from datetime import datetime
+from typing import Dict
+import requests
 from telegram.ext import ContextTypes
 
-API_KEY = os.environ["API_KEY"]
-API_USERNAME = os.environ["API_USERNAME"]
-
-VAALILAKANA_POST_URL = os.environ["VAALILAKANA_POST_URL"]
-
-# Election positions
-BOARD = os.environ["BOARD"].split(",")
-ELECTED_OFFICIALS = os.environ["ELECTED_OFFICIALS"].split(",")
-OTHER_ELECTED = os.environ["OTHER_ELECTED"].split(",")
+from .sheets_data_manager import DataManager, DivisionData
+from .config import API_KEY, API_USERNAME, VAALILAKANA_POST_URL
 
 YEAR = datetime.now().year
 
 
-def json_to_markdown(json_data):
-    # Parse the JSON data
-    data = json.loads(json_data)
-
-    # Start building the HTML
+def data_to_markdown(data: Dict[str, DivisionData]) -> str:
+    """Convert data to markdown."""
+    # Start building the markdown
     text = f"# VAALILAKANA {YEAR} / ELECTION SHEET {YEAR}\n\n"
 
     # Iterate over each division
@@ -34,7 +25,7 @@ def json_to_markdown(json_data):
         text += f"### {division_name} / {division_name_en}\n\n"
 
         # Iterate over each role in the division
-        for role_key, role_data in division_data["roles"].items():
+        for role_data in division_data["roles"].values():
             role_title = role_data["title"]
             role_title_en = role_data["title_en"]
             role_amount = role_data["amount"]
@@ -42,9 +33,9 @@ def json_to_markdown(json_data):
             role_applicants = role_data["applicants"]
 
             # Determine if the role is a board role or official role
-            if role_key in BOARD:
+            if role_data.get("type") == "BOARD":
                 role_tag = "**"
-            elif role_key in ELECTED_OFFICIALS + OTHER_ELECTED:
+            elif role_data.get("type") in ("ELECTED", "AUDITOR"):
                 role_tag = "*"
             else:
                 role_tag = None
@@ -69,7 +60,7 @@ def json_to_markdown(json_data):
                 text += "\n"
                 for applicant in role_applicants:
                     applicant_name = applicant["name"]
-                    if applicant["valittu"]:
+                    if applicant.get("status") == "ELECTED":
                         text += f"* **{applicant_name}**\n"
                     else:
                         text += f"* {applicant_name}\n"
@@ -82,13 +73,19 @@ def json_to_markdown(json_data):
     return text
 
 
-def update_election_sheet(context: ContextTypes.DEFAULT_TYPE):
-    # Read the JSON data
-    with open("data/vaalilakana.json", "r", encoding="utf-8") as f:
-        json_data = f.read()
+async def update_election_sheet(
+    _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
+):
+    """Update the election sheet in the Guild website."""
+    # Get full data from Google Sheets (includes non-elected roles)
+    try:
+        vaalilakana_data = data_manager.vaalilakana_full
+    except Exception as e:
+        print("Error getting data from Google Sheets: %s", e)
+        return None
 
-    # Convert JSON to HTML
-    text = json_to_markdown(json_data)
+    # Convert data to markdown
+    text = data_to_markdown(vaalilakana_data)
 
     headers = {
         "Api-Key": API_KEY,

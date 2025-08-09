@@ -22,29 +22,29 @@ from .config import (
     GIVING_EMAIL,
     CONFIRMING_APPLICATION,
 )
-from .data_manager import DataManager
+from .sheets_data_manager import DataManager
 from .admin_commands import (
     remove_applicant,
     add_fiirumi_to_applicant,
     unassociate_fiirumi,
-    add_selected_tag,
-    edit_or_add_new_role,
-    remove_role,
-    export_data,
+    add_elected_tag,
     export_officials_website,
     admin_help,
 )
 from .user_commands import (
     register_channel,
-    show_vaalilakana,
+    unregister_channel,
     show_election_sheet,
+    show_election_sheet_en,
+    applications_en,
+    applications,
     jauhis,
     jauh,
     jauho,
     lauh,
     mauh,
-    help,
-    apua,
+    help_command,
+    apua_command,
 )
 from .application_handlers import (
     hae,
@@ -59,7 +59,8 @@ from .application_handlers import (
     handle_back_button,
 )
 from .announcements import parse_fiirumi_posts, announce_new_responses
-from .admin_approval import handle_admin_approval, list_pending_applications
+from .admin_approval import handle_admin_approval
+from .sheet_updater import update_election_sheet
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -78,16 +79,7 @@ def setup_logging():
 
 async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log Errors caused by Updates."""
-    logger.warning('Update "%s" caused error "%s"', update, context.error)
-
-
-def create_wrapper(func, data_manager):
-    """Create a wrapper function that includes the data_manager parameter."""
-
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        return await func(update, context, data_manager)
-
-    return wrapper
+    logger.warning("Update '%s' caused error '%s'", update, context.error)
 
 
 async def post_init(app: Application, data_manager: DataManager):
@@ -98,128 +90,154 @@ async def post_init(app: Application, data_manager: DataManager):
 
     # Schedule jobs
     jq.run_repeating(
-        lambda ctx: parse_fiirumi_posts(ctx, data_manager), interval=60, first=0
+        lambda context: parse_fiirumi_posts(context, data_manager), interval=60, first=0
     )
     jq.run_repeating(
-        lambda ctx: announce_new_responses(ctx, data_manager), interval=3600, first=0
+        lambda context: announce_new_responses(context, data_manager),
+        interval=3600,
+        first=0,
     )
 
-    # Import and schedule the election sheet updater
-    from lakanaupdater import update_election_sheet
-
-    jq.run_repeating(update_election_sheet, interval=60, first=0)
+    jq.run_repeating(
+        lambda context: update_election_sheet(context, data_manager),
+        interval=60,
+        first=0,
+    )
 
     # Admin command handlers
     app.add_handler(
-        CommandHandler("remove", create_wrapper(remove_applicant, data_manager))
-    )
-    app.add_handler(
         CommandHandler(
-            "add_fiirumi", create_wrapper(add_fiirumi_to_applicant, data_manager)
+            "remove",
+            lambda update, context: remove_applicant(update, context, data_manager),
         )
     )
     app.add_handler(
         CommandHandler(
-            "remove_fiirumi", create_wrapper(unassociate_fiirumi, data_manager)
+            "add_fiirumi",
+            lambda update, _: add_fiirumi_to_applicant(update, data_manager),
         )
-    )
-    app.add_handler(
-        CommandHandler("selected", create_wrapper(add_selected_tag, data_manager))
     )
     app.add_handler(
         CommandHandler(
-            "edit_or_add_new_role", create_wrapper(edit_or_add_new_role, data_manager)
+            "remove_fiirumi",
+            lambda update, _: unassociate_fiirumi(update, data_manager),
         )
     )
     app.add_handler(
-        CommandHandler("remove_role", create_wrapper(remove_role, data_manager))
+        CommandHandler(
+            "elected",
+            lambda update, context: add_elected_tag(update, context, data_manager),
+        )
     )
-    app.add_handler(
-        CommandHandler("export_data", create_wrapper(export_data, data_manager))
-    )
+
+    # export_data removed; use Google Sheets directly for raw exports
     app.add_handler(
         CommandHandler(
             "export_officials_website",
-            create_wrapper(export_officials_website, data_manager),
+            lambda update, _: export_officials_website(update, data_manager),
+        )
+    )
+    app.add_handler(CommandHandler("admin_help", admin_help))
+
+    # User command handlers
+    app.add_handler(
+        CommandHandler(
+            "start", lambda update, _: register_channel(update, data_manager)
         )
     )
     app.add_handler(
         CommandHandler(
-            "pending", create_wrapper(list_pending_applications, data_manager)
+            "stop", lambda update, _: unregister_channel(update, data_manager)
         )
     )
     app.add_handler(
-        CommandHandler("admin_help", create_wrapper(admin_help, data_manager))
-    )
-
-    # User command handlers
-    app.add_handler(
-        CommandHandler("start", create_wrapper(register_channel, data_manager))
+        CommandHandler(
+            "lakana", lambda update, _: show_election_sheet(update, data_manager)
+        )
     )
     app.add_handler(
-        CommandHandler("lakana", create_wrapper(show_vaalilakana, data_manager))
+        CommandHandler(
+            "sheet", lambda update, _: show_election_sheet_en(update, data_manager)
+        )
     )
     app.add_handler(
-        CommandHandler("sheet", create_wrapper(show_election_sheet, data_manager))
+        CommandHandler(
+            "hakemukset", lambda update, _: applications(update, data_manager)
+        )
     )
-    app.add_handler(CommandHandler("jauhis", create_wrapper(jauhis, data_manager)))
-    app.add_handler(CommandHandler("jauh", create_wrapper(jauh, data_manager)))
-    app.add_handler(CommandHandler("jauho", create_wrapper(jauho, data_manager)))
-    app.add_handler(CommandHandler("lauh", create_wrapper(lauh, data_manager)))
-    app.add_handler(CommandHandler("mauh", create_wrapper(mauh, data_manager)))
-    app.add_handler(CommandHandler("help", create_wrapper(help, data_manager)))
-    app.add_handler(CommandHandler("apua", create_wrapper(apua, data_manager)))
+    app.add_handler(
+        CommandHandler(
+            "applications", lambda update, _: applications_en(update, data_manager)
+        )
+    )
+    app.add_handler(CommandHandler("jauhis", jauhis))
+    app.add_handler(CommandHandler("jauh", jauh))
+    app.add_handler(CommandHandler("jauho", jauho))
+    app.add_handler(CommandHandler("lauh", lauh))
+    app.add_handler(CommandHandler("mauh", mauh))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("apua", apua_command))
 
     # Admin approval callback handler
     app.add_handler(
         CallbackQueryHandler(
-            create_wrapper(handle_admin_approval, data_manager),
+            lambda update, ctx: handle_admin_approval(update, ctx, data_manager),
             pattern="^(approve_|reject_)",
         )
     )
+
+    application_states = {
+        SELECTING_DIVISION: [
+            CallbackQueryHandler(
+                lambda update, ctx: select_division(update, ctx, data_manager)
+            )
+        ],
+        SELECTING_ROLE: [
+            CallbackQueryHandler(
+                handle_multiple_application_choice,
+                pattern="^(continue_multiple|cancel_multiple)$",
+            ),
+            CallbackQueryHandler(
+                lambda update, ctx: handle_back_button(update, ctx, data_manager),
+                pattern="^back$",
+            ),
+            CallbackQueryHandler(
+                lambda update, ctx: select_role(update, ctx, data_manager)
+            ),
+        ],
+        GIVING_NAME: [
+            MessageHandler(
+                filters.TEXT & (~filters.COMMAND),
+                enter_name,
+            )
+        ],
+        GIVING_EMAIL: [
+            MessageHandler(
+                filters.TEXT & (~filters.COMMAND),
+                enter_email,
+            )
+        ],
+        CONFIRMING_APPLICATION: [
+            CallbackQueryHandler(
+                lambda update, ctx: confirm_application(update, ctx, data_manager)
+            )
+        ],
+    }
 
     # Application conversation handlers
     # Finnish application handler
     hae_handler = ConversationHandler(
         entry_points=[
             CommandHandler(
-                "hae", create_wrapper(hae, data_manager), filters.ChatType.PRIVATE
+                "hae",
+                lambda update, ctx: hae(update, ctx, data_manager),
+                filters.ChatType.PRIVATE,
             )
         ],
-        states={
-            SELECTING_DIVISION: [
-                CallbackQueryHandler(create_wrapper(select_division, data_manager))
-            ],
-            SELECTING_ROLE: [
-                CallbackQueryHandler(
-                    create_wrapper(handle_multiple_application_choice, data_manager),
-                    pattern="^(continue_multiple|cancel_multiple)$",
-                ),
-                CallbackQueryHandler(
-                    create_wrapper(handle_back_button, data_manager),
-                    pattern="^back$",
-                ),
-                CallbackQueryHandler(create_wrapper(select_role, data_manager)),
-            ],
-            GIVING_NAME: [
-                MessageHandler(
-                    filters.TEXT & (~filters.COMMAND),
-                    create_wrapper(enter_name, data_manager),
-                )
-            ],
-            GIVING_EMAIL: [
-                MessageHandler(
-                    filters.TEXT & (~filters.COMMAND),
-                    create_wrapper(enter_email, data_manager),
-                )
-            ],
-            CONFIRMING_APPLICATION: [
-                CallbackQueryHandler(create_wrapper(confirm_application, data_manager))
-            ],
-        },
+        states=application_states,
         fallbacks=[
-            CommandHandler("cancel", create_wrapper(cancel, data_manager)),
-            CommandHandler("hae", create_wrapper(hae, data_manager)),
+            CommandHandler("cancel", cancel),
+            CommandHandler("hae", lambda update, ctx: hae(update, ctx, data_manager)),
         ],
     )
 
@@ -227,43 +245,17 @@ async def post_init(app: Application, data_manager: DataManager):
     apply_handler = ConversationHandler(
         entry_points=[
             CommandHandler(
-                "apply", create_wrapper(apply, data_manager), filters.ChatType.PRIVATE
+                "apply",
+                lambda update, ctx: apply(update, ctx, data_manager),
+                filters.ChatType.PRIVATE,
             )
         ],
-        states={
-            SELECTING_DIVISION: [
-                CallbackQueryHandler(create_wrapper(select_division, data_manager))
-            ],
-            SELECTING_ROLE: [
-                CallbackQueryHandler(
-                    create_wrapper(handle_multiple_application_choice, data_manager),
-                    pattern="^(continue_multiple|cancel_multiple)$",
-                ),
-                CallbackQueryHandler(
-                    create_wrapper(handle_back_button, data_manager),
-                    pattern="^back$",
-                ),
-                CallbackQueryHandler(create_wrapper(select_role, data_manager)),
-            ],
-            GIVING_NAME: [
-                MessageHandler(
-                    filters.TEXT & (~filters.COMMAND),
-                    create_wrapper(enter_name, data_manager),
-                )
-            ],
-            GIVING_EMAIL: [
-                MessageHandler(
-                    filters.TEXT & (~filters.COMMAND),
-                    create_wrapper(enter_email, data_manager),
-                )
-            ],
-            CONFIRMING_APPLICATION: [
-                CallbackQueryHandler(create_wrapper(confirm_application, data_manager))
-            ],
-        },
+        states=application_states,
         fallbacks=[
-            CommandHandler("cancel", create_wrapper(cancel, data_manager)),
-            CommandHandler("apply", create_wrapper(apply, data_manager)),
+            CommandHandler("cancel", cancel),
+            CommandHandler(
+                "apply", lambda update, ctx: apply(update, ctx, data_manager)
+            ),
         ],
     )
 
