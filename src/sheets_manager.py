@@ -24,6 +24,7 @@ logger = logging.getLogger("vaalilakanabot")
 # These are invalidated by the job queue every minute
 _roles_cache = TTLCache(maxsize=1, ttl=300)
 _applications_cache = TTLCache(maxsize=1, ttl=300)
+_channels_cache = TTLCache(maxsize=1, ttl=300)
 
 
 class SheetsManager:  # pylint: disable=too-many-public-methods
@@ -146,16 +147,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
     def generate_role_id(self) -> str:
         """Generate a unique role ID using UUID4."""
         return str(uuid.uuid4())
-
-    def get_all_role_ids(self) -> List[str]:
-        """Get all existing role IDs from the election sheet."""
-        try:
-            # Get all values from column A (ID column), skip header
-            values = self.election_sheet.col_values(1)[1:]  # Skip header
-            return [v for v in values if v]  # Filter out empty values
-        except Exception as e:
-            logger.error("Error getting role IDs: %s", e)
-            return []
 
     @cached(cache=_roles_cache)
     def get_all_roles(self) -> List[ElectionStructureRow]:
@@ -558,6 +549,11 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
                 logger.info("Removed %d channels in batch", len(rows_to_delete))
 
+            # Invalidate cache after successful operations
+            if channels_to_add or channels_to_remove:
+                _channels_cache.clear()
+                logger.debug("Invalidated channels cache after modifications")
+
             return True
 
         except Exception as e:
@@ -636,6 +632,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             return {}
 
     # Channel management methods
+    @cached(cache=_channels_cache)
     def get_all_channels(self) -> List[ChannelRow]:
         """Get all registered channels."""
         try:
