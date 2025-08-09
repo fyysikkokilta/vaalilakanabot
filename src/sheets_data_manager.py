@@ -13,11 +13,7 @@ from .types import (
     ApplicantDict,
     DivisionData,
     RoleData,
-    FiirumiPost,
-    QuestionPost,
     PendingApplication,
-    FiirumiPostInput,
-    QuestionPostInput,
     ApplicationData,
     ChannelRow,
 )
@@ -333,32 +329,10 @@ class DataManager:
         """Remove a channel."""
         return self.sheets_manager.remove_channel(chat_id)
 
-    def add_fiirumi_post(self, post_id: str, post_data: FiirumiPostInput) -> bool:
-        """Add a new fiirumi post."""
-        return self.sheets_manager.add_fiirumi_post(post_id, post_data)
-
-    def add_question_post(self, post_id: str, post_data: QuestionPostInput) -> bool:
-        """Add a new question post."""
-        return self.sheets_manager.add_question_post(post_id, post_data)
-
-    def update_question_posts_count(self, post_id: str, posts_count: int) -> bool:
-        """Update the posts count for a question."""
-        return self.sheets_manager.update_question_posts_count(post_id, posts_count)
-
     @property
     def channels(self) -> List[ChannelRow]:
         """Get all registered channels."""
         return self.sheets_manager.get_all_channels()
-
-    @property
-    def fiirumi_posts(self) -> Dict[str, FiirumiPost]:
-        """Get all fiirumi posts."""
-        return self.sheets_manager.get_all_fiirumi_posts()
-
-    @property
-    def question_posts(self) -> Dict[str, QuestionPost]:
-        """Get all question posts."""
-        return self.sheets_manager.get_all_question_posts()
 
     @property
     def pending_applications(self) -> List[PendingApplication]:

@@ -81,24 +81,6 @@ class DivisionData(TypedDict):
     roles: Dict[str, RoleData]
 
 
-class FiirumiPost(TypedDict):
-    """Fiirumi post dictionary."""
-
-    user_id: str
-    post_title: str
-    post_date: str
-    category: str
-    topic_id: str
-
-
-class QuestionPost(TypedDict):
-    """Question post dictionary."""
-
-    topic_id: str
-    posts_count: int
-    last_updated: str
-
-
 class PendingApplication(TypedDict):
     """Pending application dictionary."""
 
@@ -109,23 +91,6 @@ class PendingApplication(TypedDict):
     Telegram: str
     Fiirumi_Post: str
     Status: str
-
-
-class FiirumiPostInput(TypedDict, total=False):
-    """Fiirumi post input dictionary."""
-
-    user_id: str
-    post_title: str
-    post_date: str
-    category: str
-    topic_id: str
-
-
-class QuestionPostInput(TypedDict, total=False):
-    """Question post input dictionary."""
-
-    topic_id: str
-    posts_count: int
 
 
 class ChannelRow(TypedDict):

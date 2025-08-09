@@ -52,8 +52,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         self.election_sheet = None
         self.applications_sheet = None
         self.channels_sheet = None
-        self.fiirumi_posts_sheet = None
-        self.question_posts_sheet = None
 
         # Application queue for batching
         self.application_queue = deque()
@@ -180,35 +178,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             # Add headers
             headers = ["Chat_ID", "Added_Date"]
             self.channels_sheet.update("A1:B1", [headers])
-
-        # Get or create Fiirumi Posts sheet
-        try:
-            self.fiirumi_posts_sheet = self.spreadsheet.worksheet("Fiirumi Posts")
-        except gspread.WorksheetNotFound:
-            self.fiirumi_posts_sheet = self.spreadsheet.add_worksheet(
-                title="Fiirumi Posts", rows=1000, cols=6
-            )
-            # Add headers
-            headers = [
-                "Post_ID",
-                "User_ID",
-                "Post_Title",
-                "Post_Date",
-                "Category",
-                "Topic_ID",
-            ]
-            self.fiirumi_posts_sheet.update("A1:F1", [headers])
-
-        # Get or create Question Posts sheet
-        try:
-            self.question_posts_sheet = self.spreadsheet.worksheet("Question Posts")
-        except gspread.WorksheetNotFound:
-            self.question_posts_sheet = self.spreadsheet.add_worksheet(
-                title="Question Posts", rows=1000, cols=4
-            )
-            # Add headers
-            headers = ["Post_ID", "Topic_ID", "Posts_Count", "Last_Updated"]
-            self.question_posts_sheet.update("A1:D1", [headers])
 
     def generate_role_id(self) -> str:
         """Generate a unique role ID using UUID4."""
@@ -664,140 +633,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         except Exception as e:
             logger.error("Error removing channel: %s", e)
             return False
-
-    # Fiirumi posts management methods
-    def add_fiirumi_post(self, post_id: str, post_data: dict) -> bool:
-        """Add a new fiirumi post."""
-        try:
-            # Check if post already exists
-            existing_posts = self.get_all_fiirumi_posts()
-            if post_id in existing_posts:
-                logger.info("Fiirumi post %s already exists", post_id)
-                return True
-
-            # Add new post
-            next_row = len(self.fiirumi_posts_sheet.col_values(1)) + 1
-            row_data = [
-                post_id,
-                post_data.get("user_id", ""),
-                post_data.get("post_title", ""),
-                post_data.get("post_date", ""),
-                post_data.get("category", ""),
-                post_data.get("topic_id", ""),
-            ]
-            self.fiirumi_posts_sheet.update(f"A{next_row}:F{next_row}", [row_data])
-
-            logger.info("Added fiirumi post %s", post_id)
-            return True
-
-        except Exception as e:
-            logger.error("Error adding fiirumi post: %s", e)
-            return False
-
-    def get_all_fiirumi_posts(self) -> dict:
-        """Get all fiirumi posts as a dictionary."""
-        try:
-            all_data = self.fiirumi_posts_sheet.get_all_records()
-            posts = {}
-            for record in all_data:
-                if record.get("Post_ID"):
-                    posts[record["Post_ID"]] = {
-                        "user_id": record.get("User_ID", ""),
-                        "post_title": record.get("Post_Title", ""),
-                        "post_date": record.get("Post_Date", ""),
-                        "category": record.get("Category", ""),
-                        "topic_id": record.get("Topic_ID", ""),
-                    }
-            return posts
-        except Exception as e:
-            logger.error("Error getting fiirumi posts: %s", e)
-            return {}
-
-    # Question posts management methods
-    def add_question_post(self, post_id: str, post_data: dict) -> bool:
-        """Add a new question post."""
-        try:
-            # Check if post already exists
-            existing_posts = self.get_all_question_posts()
-            if post_id in existing_posts:
-                # Update existing post
-                return self.update_question_post(post_id, post_data)
-
-            # Add new post
-            next_row = len(self.question_posts_sheet.col_values(1)) + 1
-            row_data = [
-                post_id,
-                post_data.get("topic_id", ""),
-                post_data.get("posts_count", 0),
-                datetime.now().isoformat(),
-            ]
-            self.question_posts_sheet.update(f"A{next_row}:D{next_row}", [row_data])
-
-            logger.info("Added question post %s", post_id)
-            return True
-
-        except Exception as e:
-            logger.error("Error adding question post: %s", e)
-            return False
-
-    def update_question_posts_count(self, post_id: str, posts_count: int) -> bool:
-        """Update the posts count for a question."""
-        try:
-            # Find the row with this post_id
-            all_data = self.question_posts_sheet.get_all_values()
-            headers = all_data[0]
-
-            posts_count_col = headers.index("Posts_Count") + 1
-            last_updated_col = headers.index("Last_Updated") + 1
-
-            for i, row in enumerate(all_data[1:], start=2):  # Start from row 2
-                if len(row) > 0 and row[0] == post_id:
-                    # Update both fields using bulk update
-                    updates = [
-                        {
-                            "range": f"{chr(64 + posts_count_col)}{i}",
-                            "values": [[posts_count]],
-                        },
-                        {
-                            "range": f"{chr(64 + last_updated_col)}{i}",
-                            "values": [[datetime.now().isoformat()]],
-                        },
-                    ]
-                    self.question_posts_sheet.batch_update(updates)
-                    logger.info(
-                        "Updated question post %s count to %s", post_id, posts_count
-                    )
-                    return True
-
-            logger.warning("Question post %s not found", post_id)
-            return False
-
-        except Exception as e:
-            logger.error("Error updating question post count: %s", e)
-            return False
-
-    def get_all_question_posts(self) -> dict:
-        """Get all question posts as a dictionary."""
-        try:
-            all_data = self.question_posts_sheet.get_all_records()
-            posts = {}
-            for record in all_data:
-                if record.get("Post_ID"):
-                    posts[record["Post_ID"]] = {
-                        "topic_id": record.get("Topic_ID", ""),
-                        "posts_count": record.get("Posts_Count", 0),
-                        "last_updated": record.get("Last_Updated", ""),
-                    }
-            return posts
-        except Exception as e:
-            logger.error("Error getting question posts: %s", e)
-            return {}
-
-    def update_question_post(self, post_id: str, post_data: dict) -> bool:
-        """Update an existing question post."""
-        return self.update_question_posts_count(
-            post_id, post_data.get("posts_count", 0)
-        )
 
     def get_all_pending_applications(self) -> List[Dict]:
         """Get all pending applications from Applications sheet where Status is empty."""

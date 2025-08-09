@@ -123,6 +123,6 @@ def vaalilakana_to_string_en(vaalilakana: dict) -> str:
     return _build_vaalilakana_message(vaalilakana, language="en")
 
 
-def create_fiirumi_link(slug: str, t_id: str) -> str:
+def create_fiirumi_link(t_id: str) -> str:
     """Create a fiirumi link from slug and thread ID."""
-    return f"{BASE_URL}/t/{slug}/{t_id}"
+    return f"{BASE_URL}/t/{t_id}"

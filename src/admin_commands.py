@@ -8,9 +8,9 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from .config import ADMIN_CHAT_ID
-from .utils import create_fiirumi_link
 from .sheets_data_manager import DataManager
 from .announcements import announce_to_channels
+from .utils import create_fiirumi_link
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -167,16 +167,7 @@ async def add_fiirumi_to_applicant(update: Update, data_manager: DataManager):
             await update.message.reply_text(f"Unknown position: {position}")
             return
 
-        if thread_id not in data_manager.fiirumi_posts:
-            await update.message.reply_text(
-                f"Fiirumi post not found with given id: {thread_id}",
-            )
-            return
-
-        fiirumi = create_fiirumi_link(
-            data_manager.fiirumi_posts[thread_id]["slug"],
-            data_manager.fiirumi_posts[thread_id]["id"],
-        )
+        fiirumi = create_fiirumi_link(thread_id)
         data_manager.set_applicant_fiirumi(found_position, name, fiirumi)
 
         await update.message.reply_html(

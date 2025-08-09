@@ -177,26 +177,6 @@ The bot creates and manages 5 worksheets in your Google Sheets document:
 | A      | Chat_ID    | Telegram chat ID            |
 | B      | Added_Date | When channel was registered |
 
-#### Sheet 4: "Fiirumi Posts"
-
-| Column | Field      | Description       |
-| ------ | ---------- | ----------------- |
-| A      | Post_ID    | Forum post ID     |
-| B      | User_ID    | Author's user ID  |
-| C      | Post_Title | Title of the post |
-| D      | Post_Date  | Publication date  |
-| E      | Category   | Forum category    |
-| F      | Topic_ID   | Related topic ID  |
-
-#### Sheet 5: "Question Posts"
-
-| Column | Field        | Description           |
-| ------ | ------------ | --------------------- |
-| A      | Post_ID      | Question post ID      |
-| B      | Topic_ID     | Related topic ID      |
-| C      | Posts_Count  | Number of responses   |
-| D      | Last_Updated | Last update timestamp |
-
 ### Admin Workflow
 
 **Adding New Roles:**
@@ -213,18 +193,6 @@ The bot creates and manages 5 worksheets in your Google Sheets document:
 3. Edit applicant data directly: status, Fiirumi links, etc.
 4. Use bot commands or direct editing for status changes
 5. Status options: APPROVED, DENIED, REMOVED, ELECTED, or empty (pending)
-
-**Monitoring Activity:**
-
-1. Check "Channels" tab to see registered Telegram channels
-2. View "Fiirumi Posts" to track forum activity
-3. Monitor "Question Posts" for Q&A engagement
-4. Review "Applications" tab and filter by Status column:
-   - Empty = Pending applications awaiting approval
-   - "APPROVED" = Approved applications shown on election sheet
-   - "DENIED" = Rejected applications
-   - "ELECTED" = Applicants marked as elected
-   - "REMOVED" = Applicants removed from position
 
 ### Data Validation
 
