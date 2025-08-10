@@ -1,5 +1,6 @@
 """Main bot module."""
 
+import datetime
 import logging
 import sys
 
@@ -120,24 +121,26 @@ async def post_init(app: Application, data_manager: DataManager):
 
     # Schedule jobs
     jq.run_repeating(
-        lambda context: parse_fiirumi_posts(context, data_manager), interval=60, first=0
+        lambda context: parse_fiirumi_posts(context, data_manager),
+        interval=60,
+        first=datetime.datetime(2025, 8, 10, hour=0),
     )
     jq.run_repeating(
         lambda context: announce_new_responses(context, data_manager),
         interval=3600,
-        first=0,
+        first=datetime.datetime(2025, 8, 10, hour=0),
     )
 
     jq.run_repeating(
         lambda context: update_election_sheet(context, data_manager),
         interval=60,
-        first=0,
+        first=datetime.datetime(2025, 8, 10, hour=0),
     )
 
     jq.run_repeating(
         lambda context: process_application_queue(context, data_manager),
         interval=60,
-        first=10,  # Start after 10 seconds to let the bot initialize
+        first=datetime.datetime(2025, 8, 10, hour=0, minute=0, second=10),
     )
 
     # Admin command handlers
