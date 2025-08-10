@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes
 from .config import ADMIN_CHAT_ID
 from .sheets_data_manager import DataManager
 from .announcements import announce_to_channels
-from .utils import create_fiirumi_link
+from .utils import create_fiirumi_link, get_notification_text
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -240,29 +240,20 @@ async def add_elected_tag(
         role = data_manager.find_role_by_name(found_position)
         if role:
             applications = data_manager.sheets_manager.get_applications_for_role(
-                role["ID"]
+                role.get("ID")
             )
             for app in applications:
-                if app["Name"] == name:
-                    user_id = app["Telegram_ID"]
+                if app.get("Name") == name:
+                    user_id = app.get("Telegram_ID")
                     language = app.get(
                         "Language", "en"
                     )  # Default to English if not specified
 
                     # Send notification to the elected user
                     try:
-                        if language == "fi":
-                            notification_text = (
-                                f"🎉 <b>Onneksi olkoon!</b>\n\n"
-                                f"Sinut on valittu virkaan <b>{found_position}</b>! "
-                                f"Kiitos hakemuksestasi."
-                            )
-                        else:
-                            notification_text = (
-                                f"🎉 <b>Congratulations!</b>\n\n"
-                                f"You have been elected to the position <b>{found_position}</b>! "
-                                f"Thank you for your application."
-                            )
+                        notification_text = get_notification_text(
+                            "elected", found_position, language
+                        )
 
                         await context.bot.send_message(
                             chat_id=user_id, text=notification_text, parse_mode="HTML"
@@ -277,7 +268,7 @@ async def add_elected_tag(
                     break
 
             # Send announcement to channels for BOARD and ELECTED roles
-            role_type = role.get("Type", "")
+            role_type = role.get("Type")
             if role_type in ("BOARD", "ELECTED"):
                 await announce_to_channels(
                     f"🎉 <i>{name}</i> elected for <b>{found_position}</b>",
@@ -307,20 +298,22 @@ async def export_officials_website(update: Update, data_manager: DataManager):
         output = StringIO()
 
         # Process each role from the full dataset, filtering out board roles
-        for division_data in data_manager.vaalilakana_full.values():
-            for role_title, role_data in division_data.get("roles", {}).items():
+        for division_data in data_manager.vaalilakana_full:
+            for role_data in division_data.get("roles", []):
                 if role_data.get("type") == "BOARD":
                     continue  # Skip board roles
 
                 # Write division and role information
-                output.write(
-                    f'"{division_data.get("division", "")}","{division_data.get("division_en", "")}","{role_title}","{role_data.get("title_en", role_title)}"'
-                )
+                division_fi = division_data.get("division")
+                division_en = division_data.get("division_en")
+                role_fi = role_data.get("title")
+                role_en = role_data.get("title_en")
+                output.write(f'"{division_fi}","{division_en}","{role_fi}","{role_en}"')
 
                 # Write applicant names (only elected)
                 for applicant in role_data.get("applicants", []):
-                    if applicant.get("status") == "ELECTED":
-                        output.write(f',"{applicant["name"]}"')
+                    if applicant.get("Status") == "ELECTED":
+                        output.write(f',"{applicant.get("Name")}"')
 
                 output.write("\n")
 

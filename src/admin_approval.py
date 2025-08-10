@@ -9,6 +9,8 @@ from .admin_commands import is_admin_chat
 from .config import ADMIN_CHAT_ID
 from .announcements import announce_to_channels
 from .sheets_data_manager import DataManager
+from .types import ApplicationRow
+from .utils import get_notification_text
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -17,35 +19,41 @@ async def send_admin_approval_request(
     context: ContextTypes.DEFAULT_TYPE,
     data_manager: DataManager,
     application_ref: str,
-    application_data: dict,
+    position: str,
+    applicant: ApplicationRow,
 ):
     """Send an approval request to admin chat."""
-    applicant = application_data["applicant"]
-    position = application_data["position"]
-    division = application_data["division"]
-    user_id = applicant["user_id"]
+    user_id = applicant.get("Telegram_ID")
+
+    # Get division from role data
+    role = data_manager.find_role_by_name(position)
+    division = role.get("Division_FI", "") if role else ""
 
     # Check if user already has other elected role applications
     existing_elected_applications = []
 
     # Check for approved applications to elected roles (based on role Type)
-    for role_title, role_data in data_manager.vaalilakana.items():
-        if role_title != position and role_data.get("type") in ("BOARD", "ELECTED"):
+    for role_data in data_manager.vaalilakana:
+        if role_data.get("title", "") != position:
             for app in role_data.get("applicants", []):
-                if app["user_id"] == user_id and app.get("status") == "APPROVED":
-                    existing_elected_applications.append(f"✅ {role_title} (approved)")
+                if (
+                    app.get("Telegram_ID", 0) == user_id
+                    and app.get("Status", "") == "APPROVED"
+                ):
+                    existing_elected_applications.append(
+                        f"✅ {role_data.get('title', '')} (approved)"
+                    )
 
     # Check for pending applications to elected roles using Applications sheet rows
     # Build current role id for comparison
     current_role = data_manager.find_role_by_name(position)
     current_role_id = current_role.get("ID") if current_role else None
 
-    for app_row in data_manager.pending_applications:
-        # Pending = Status is empty (handled in getter). Match same user
-        if int(app_row.get("Telegram_ID", 0)) != int(user_id):
+    for app_row in data_manager.applications:
+        if app_row.get("Telegram_ID") != int(user_id) or app_row.get("Status") != "":
             continue
 
-        role_id = app_row.get("Role_ID", "")
+        role_id = app_row.get("Role_ID")
         if not role_id or (current_role_id and role_id == current_role_id):
             continue
 
@@ -55,7 +63,7 @@ async def send_admin_approval_request(
             None,
         )
         if role_row and role_row.get("Type") in ("BOARD", "ELECTED"):
-            role_title = role_row.get("Role_FI", role_id)
+            role_title = role_row.get("Role_FI", "")
             existing_elected_applications.append(f"⏳ {role_title} (pending)")
 
     # Build the admin message
@@ -63,9 +71,9 @@ async def send_admin_approval_request(
         f"🗳️ <b>New application for elected position</b>\n\n"
         f"<b>Position:</b> {position}\n"
         f"<b>Division:</b> {division}\n"
-        f"<b>Name:</b> {applicant['name']}\n"
-        f"<b>Email:</b> {applicant['email']}\n"
-        f"<b>Telegram:</b> @{applicant['telegram']}\n\n"
+        f"<b>Name:</b> {applicant.get('Name')}\n"
+        f"<b>Email:</b> {applicant.get('Email')}\n"
+        f"<b>Telegram:</b> @{applicant.get('Telegram')}\n\n"
     )
 
     # Add warning if user has other elected applications
@@ -153,15 +161,10 @@ async def handle_admin_approval(
         await query.edit_message_text("❌ Application not found or already processed.")
         return
 
-    applicant = {
-        "name": application.get("Name", ""),
-        "email": application.get("Email", ""),
-        "telegram": application.get("Telegram", ""),
-        "user_id": telegram_id,
-    }
-    position = role_row.get("Role_FI", "")
+    name = application.get("Name")
+    position = role_row.get("Role_FI")
     user_id = telegram_id
-    language = application.get("Language", "en")
+    language = application.get("Language")
 
     if action == "approve":
         # Approve the application
@@ -170,25 +173,16 @@ async def handle_admin_approval(
             await query.edit_message_text(
                 f"✅ <b>Application approved!</b>\n\n"
                 f"<b>Position:</b> {position}\n"
-                f"<b>Applicant:</b> {applicant['name']}\n\n"
+                f"<b>Applicant:</b> {name}\n\n"
                 f"Application has been added to the election sheet and notification sent to channels.",
                 parse_mode="HTML",
             )
 
             # Notify the applicant
             try:
-                if language == "fi":
-                    notification_text = (
-                        f"✅ <b>Hakemuksesi on hyväksytty!</b>\n\n"
-                        f"Hakemuksesi virkaan <b>{position}</b> on hyväksytty ja lisätty vaalilakanaan. "
-                        f"Kiitos hakemuksestasi!"
-                    )
-                else:
-                    notification_text = (
-                        f"✅ <b>Your application has been approved!</b>\n\n"
-                        f"Your application for the position <b>{position}</b> has been approved and added to the election sheet. "
-                        f"Thank you for your application!"
-                    )
+                notification_text = get_notification_text(
+                    "approved", position, language
+                )
 
                 await context.bot.send_message(
                     chat_id=user_id, text=notification_text, parse_mode="HTML"
@@ -198,7 +192,7 @@ async def handle_admin_approval(
 
             # Announce to channels
             await announce_to_channels(
-                f"<b>New candidate on election sheet!</b>\n{position}: <i>{applicant['name']}</i>",
+                f"<b>New candidate on election sheet!</b>\n{position}: <i>{name}</i>",
                 context,
                 data_manager,
             )
@@ -214,7 +208,7 @@ async def handle_admin_approval(
             await query.edit_message_text(
                 f"❌ <b>Application rejected!</b>\n\n"
                 f"<b>Position:</b> {position}\n"
-                f"<b>Applicant:</b> {applicant['name']}\n\n"
+                f"<b>Applicant:</b> {name}\n\n"
                 f"Application has been marked as DENIED.",
                 parse_mode="HTML",
             )
@@ -223,18 +217,7 @@ async def handle_admin_approval(
 
         # Notify the applicant about rejection
         try:
-            if language == "fi":
-                notification_text = (
-                    f"❌ <b>Hakemuksesi on hylätty</b>\n\n"
-                    f"Valitettavasti hakemuksesi virkaan <b>{position}</b> on hylätty. "
-                    f"Voit ottaa yhteyttä admineihin lisätietojen saamiseksi."
-                )
-            else:
-                notification_text = (
-                    f"❌ <b>Your application has been rejected</b>\n\n"
-                    f"Unfortunately, your application for the position <b>{position}</b> has been rejected. "
-                    f"You can contact the admins for more information."
-                )
+            notification_text = get_notification_text("rejected", position, language)
 
             await context.bot.send_message(
                 chat_id=user_id, text=notification_text, parse_mode="HTML"

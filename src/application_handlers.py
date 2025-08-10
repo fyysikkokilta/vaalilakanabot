@@ -6,6 +6,8 @@ import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler, ContextTypes
 
+from src.types import ApplicationRow
+
 from .config import (
     SELECTING_DIVISION,
     SELECTING_ROLE,
@@ -13,7 +15,7 @@ from .config import (
     GIVING_EMAIL,
     CONFIRMING_APPLICATION,
 )
-from .utils import generate_keyboard
+from .utils import generate_keyboard, get_translation
 from .admin_approval import send_admin_approval_request
 from .sheets_data_manager import DataManager
 
@@ -38,7 +40,7 @@ async def hae(
     keyboard = generate_keyboard(localized_divisions, callback_data)
 
     await update.message.reply_text(
-        "Minkä jaoksen virkaan haet?",
+        get_translation("select_division", is_finnish=False),
         reply_markup=keyboard,
     )
     return SELECTING_DIVISION
@@ -55,7 +57,7 @@ async def apply(
     keyboard = generate_keyboard(localized_divisions, callback_data)
 
     await update.message.reply_text(
-        "For which division are you applying?",
+        get_translation("select_division", is_finnish=False),
         reply_markup=keyboard,
     )
     return SELECTING_DIVISION
@@ -71,19 +73,15 @@ async def select_division(
     chat_data["division"] = query.data
 
     localized_positions, callback_data = data_manager.get_positions(
-        query.data, chat_data["is_finnish"]
+        query.data, chat_data.get("is_finnish", False)
     )
     keyboard = generate_keyboard(
         localized_positions,
         callback_data,
-        back=("Takaisin" if chat_data["is_finnish"] else "Back"),
+        back=get_translation("back", chat_data.get("is_finnish", False)),
     )
 
-    text = (
-        "Mihin rooliin haet?"
-        if chat_data["is_finnish"]
-        else "What position are you applying to?"
-    )
+    text = get_translation("select_role", chat_data.get("is_finnish", False))
     await query.edit_message_text(
         text=text,
         reply_markup=keyboard,
@@ -102,27 +100,27 @@ async def select_role(
     user_id = update.effective_user.id
     position = query.data
 
-    # Check if user already has an approved application
-    if data_manager.check_applicant_exists(position, user_id):
-        text = (
-            "Olet jo hakenut tähän rooliin!"
-            if chat_data["is_finnish"]
-            else "You have already applied to this position!"
-        )
-        await query.edit_message_text(text)
-        return ConversationHandler.END
-
-    # Check if user has a pending application for elected roles
+    # Check if user already has any application (approved or pending) for this position
     role_row = data_manager.find_role_by_name(position)
     is_elected_type = role_row and role_row.get("Type") in ("BOARD", "ELECTED")
-    if is_elected_type and data_manager.check_pending_application_exists(
-        position, user_id
-    ):
-        text = (
-            "Sinulla on jo odottava hakemus tähän rooliin!"
-            if chat_data["is_finnish"]
-            else "You already have a pending application for this position!"
-        )
+
+    if not role_row:
+        await query.edit_message_text("Role not found.")
+        return ConversationHandler.END
+
+    existing_application = data_manager.sheets_manager.get_existing_application(
+        role_row.get("ID", ""), user_id
+    )
+
+    if existing_application:
+        if existing_application.get("Status", "") == "APPROVED":
+            text = get_translation(
+                "already_applied", chat_data.get("is_finnish", False)
+            )
+        else:  # Status is empty (pending)
+            text = get_translation(
+                "pending_application", chat_data.get("is_finnish", False)
+            )
         await query.edit_message_text(text)
         return ConversationHandler.END
 
@@ -131,60 +129,43 @@ async def select_role(
         has_elected_application = False
         elected_position = ""
 
-        # Check for approved applications to elected roles
-        for role_title, role_data in data_manager.vaalilakana.items():
-            if role_data.get("type") in ("BOARD", "ELECTED"):
-                for applicant in role_data.get("applicants", []):
-                    if applicant["user_id"] == user_id:
-                        has_elected_application = True
-                        elected_position = role_title
-                        break
-            if has_elected_application:
+        # Check for any applications (approved or pending) to elected roles
+        for app_row in data_manager.applications:
+            if int(app_row.get("Telegram_ID", 0)) != int(user_id):
+                continue
+
+            role_id = app_row.get("Role_ID", "")
+            if not role_id:
+                continue
+
+            # Find role by ID and ensure it's an elected type
+            roles = data_manager.get_all_roles()
+            role = next((r for r in roles if r.get("ID") == role_id), None)
+            if role and role.get("Type") in ("BOARD", "ELECTED"):
+                has_elected_application = True
+                elected_position = role.get("Role_FI", "") or role.get("Role_EN", "")
                 break
 
-        # Check for pending applications to elected roles using Applications sheet rows
-        if not has_elected_application:
-            for app_row in data_manager.pending_applications:
-                if int(app_row.get("Telegram_ID", 0)) != int(user_id):
-                    continue
-
-                role_id = app_row.get("Role_ID", "")
-                if not role_id:
-                    continue
-                # Find role by ID and ensure it's an elected type
-                roles = data_manager.get_all_roles()
-                rr = next((r for r in roles if r.get("ID") == role_id), None)
-                if rr and rr.get("Type") in ("BOARD", "ELECTED"):
-                    has_elected_application = True
-                    elected_position = rr.get("Role_FI", "") or rr.get("Role_EN", "")
-                    break
-
         if has_elected_application:
-            warning_text = (
-                (
-                    f"⚠️ <b>Varoitus: Olet jo hakenut vaaleilla valittavaan virkaan!</b>\n\n"
-                    f"Olet jo hakenut virkaan: <b>{elected_position}</b>\n\n"
-                    f"Jos sinulla on vararooleja, kerro niistä raadille suoraan.\n\n"
-                    f"Haluatko jatkaa hakemusta tähän rooliin?"
-                )
-                if chat_data["is_finnish"]
-                else (
-                    f"⚠️ <b>Warning: You have already applied to an elected position!</b>\n\n"
-                    f"You have already applied to: <b>{elected_position}</b>\n\n"
-                    f"If you have backup roles, tell the board directly.\n\n"
-                    f"Do you want to continue with this application?"
-                )
+            warning_text = get_translation(
+                "multiple_application_warning",
+                chat_data.get("is_finnish", False),
+                elected_position=elected_position,
             )
 
             keyboard = InlineKeyboardMarkup(
                 [
                     [
                         InlineKeyboardButton(
-                            "Jatka" if chat_data["is_finnish"] else "Continue",
+                            get_translation(
+                                "continue", chat_data.get("is_finnish", False)
+                            ),
                             callback_data="continue_multiple",
                         ),
                         InlineKeyboardButton(
-                            "Peruuta" if chat_data["is_finnish"] else "Cancel",
+                            get_translation(
+                                "cancel", chat_data.get("is_finnish", False)
+                            ),
                             callback_data="cancel_multiple",
                         ),
                     ]
@@ -196,8 +177,8 @@ async def select_role(
             )
             chat_data["position"] = position
             chat_data["loc_position"] = (
-                chat_data["position"]
-                if chat_data["is_finnish"]
+                chat_data.get("position", "")
+                if chat_data.get("is_finnish", False)
                 else (data_manager.find_role_by_name(position) or {}).get(
                     "Role_EN", position
                 )
@@ -207,19 +188,23 @@ async def select_role(
 
     chat_data["position"] = position
     chat_data["loc_position"] = (
-        chat_data["position"]
-        if chat_data["is_finnish"]
+        chat_data.get("position", "")
+        if chat_data.get("is_finnish", False)
         else (data_manager.find_role_by_name(position) or {}).get("Role_EN", position)
     )
     chat_data["is_elected"] = bool(is_elected_type)
 
-    elected_role_text = "vaaleilla valittavaan " if chat_data["is_elected"] else ""
-    elected_role_text_en = "elected " if chat_data["is_elected"] else ""
+    elected_text = (
+        get_translation("elected_role_prefix", chat_data.get("is_finnish", False))
+        if chat_data.get("is_elected", False)
+        else ""
+    )
 
-    text = (
-        f"Haet {elected_role_text}rooliin: {chat_data['loc_position']}. Mikä on nimesi?"
-        if chat_data["is_finnish"]
-        else f"You are applying to the {elected_role_text_en}role: {chat_data['loc_position']}. What is your name?"
+    text = get_translation(
+        "ask_name",
+        chat_data.get("is_finnish", False),
+        elected_text=elected_text,
+        position=chat_data.get("loc_position", ""),
     )
     await query.edit_message_text(
         text=text,
@@ -234,30 +219,22 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     # Validate that name doesn't contain commas (interferes with admin commands)
     if "," in name:
-        error_text = (
-            "Nimi ei voi sisältää pilkkuja. Anna nimesi uudelleen:"
-            if chat_data["is_finnish"]
-            else "Name cannot contain commas. Please enter your name again:"
+        error_text = get_translation(
+            "name_no_commas", chat_data.get("is_finnish", False)
         )
         await update.message.reply_text(error_text)
         return GIVING_NAME
 
     # Validate that name is not empty after stripping
     if not name:
-        error_text = (
-            "Nimi ei voi olla tyhjä. Anna nimesi:"
-            if chat_data["is_finnish"]
-            else "Name cannot be empty. Please enter your name:"
+        error_text = get_translation(
+            "name_not_empty", chat_data.get("is_finnish", False)
         )
         await update.message.reply_text(error_text)
         return GIVING_NAME
 
     chat_data["name"] = name
-    text = (
-        "Mikä on sähköpostiosoitteesi?"
-        if chat_data["is_finnish"]
-        else "What is your email address?"
-    )
+    text = get_translation("ask_email", chat_data.get("is_finnish", False))
     await update.message.reply_text(text)
     return GIVING_EMAIL
 
@@ -269,10 +246,8 @@ async def enter_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
     # Validate email format
     if not is_valid_email(email):
-        error_text = (
-            "Sähköpostiosoite ei ole kelvollinen. Anna sähköpostiosoite muodossa: nimi@domain.fi"
-            if chat_data["is_finnish"]
-            else "Email address is not valid. Please provide an email in format: name@domain.com"
+        error_text = get_translation(
+            "email_invalid", chat_data.get("is_finnish", False)
         )
         await update.message.reply_text(error_text)
         return GIVING_EMAIL  # Stay in the same state to ask for email again
@@ -281,37 +256,23 @@ async def enter_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     chat_data["telegram"] = update.message.from_user.username
 
     elected_text = (
-        " (Hakemus vaatii admin-hyväksynnän ennen lisäämistä vaalilakanaan)"
-        if chat_data["is_elected"]
-        else ""
-    )
-    elected_text_en = (
-        " (Application requires admin approval before being added to the election sheet)"
-        if chat_data["is_elected"]
+        get_translation("admin_approval_note", chat_data.get("is_finnish", False))
+        if chat_data.get("is_elected", False)
         else ""
     )
 
-    text = (
-        (
-            f"Hakemuksesi tiedot: \n"
-            f"<b>Haettava rooli</b>: {chat_data['loc_position']}\n"
-            f"<b>Nimi</b>: {chat_data['name']}\n"
-            f"<b>Sähköposti</b>: {chat_data['email']}\n"
-            f"<b>Telegram</b>: {chat_data['telegram']}\n\n"
-            f"Haluatko lähettää hakemuksen{elected_text}?"
-        )
-        if chat_data["is_finnish"]
-        else (
-            f"Your application details: \n"
-            f"<b>Position</b>: {chat_data['loc_position']}\n"
-            f"<b>Name</b>: {chat_data['name']}\n"
-            f"<b>Email</b>: {chat_data['email']}\n"
-            f"<b>Telegram</b>: {chat_data['telegram']}\n\n"
-            f"Do you want to send the application {elected_text_en}?"
-        )
+    text = get_translation(
+        "application_details",
+        chat_data.get("is_finnish", False),
+        position=chat_data.get("loc_position", ""),
+        name=chat_data.get("name", ""),
+        email=chat_data.get("email", ""),
+        telegram=chat_data.get("telegram", ""),
+        elected_text=elected_text,
     )
-    text_yes = "Kyllä" if chat_data["is_finnish"] else "Yes"
-    text_no = "En" if chat_data["is_finnish"] else "No"
+
+    text_yes = get_translation("yes", chat_data.get("is_finnish", False))
+    text_no = get_translation("no", chat_data.get("is_finnish", False))
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -335,65 +296,55 @@ async def confirm_application(
     await query.answer()
     try:
         if query.data == "yes":
-            name = chat_data["name"]
-            position = chat_data["position"]
-            email = chat_data["email"]
-            telegram = chat_data["telegram"]
+            position = chat_data.get("position", "")
+            role_row = data_manager.find_role_by_name(position)
+            if not role_row:
+                logger.error("Role not found: %s", position)
+                return ConversationHandler.END
 
-            new_applicant = {
-                "user_id": update.effective_user.id,
-                "name": name,
-                "email": email,
-                "telegram": telegram,
-                "fiirumi": "",
-                "status": "",
-            }
+            new_applicant = ApplicationRow(
+                Role_ID=role_row.get("ID", ""),
+                Telegram_ID=update.effective_user.id,
+                Name=chat_data.get("name", ""),
+                Email=chat_data.get("email", ""),
+                Telegram=chat_data.get("telegram", ""),
+                Fiirumi_Post="",
+                Status="",
+                Language="fi" if chat_data.get("is_finnish", False) else "en",
+            )
 
             # Check if this is an elected role that needs admin approval via Role Type
-            role_row = data_manager.find_role_by_name(position)
             needs_approval = role_row and role_row.get("Type") in ("BOARD", "ELECTED")
             if needs_approval:
-                # Create pending application
-                application_data = {
-                    "applicant": new_applicant,
-                    "position": position,
-                    "language": "fi" if chat_data["is_finnish"] else "en",
-                }
 
                 # Add to pending applications
-                data_manager.add_pending_application(application_data)
+                data_manager.add_applicant(new_applicant)
 
                 # Send admin approval request
                 await send_admin_approval_request(
                     context,
                     data_manager,
-                    f"{role_row['ID']}_{new_applicant['user_id']}",
-                    application_data,
+                    f"{role_row['ID']}_{new_applicant['Telegram_ID']}",
+                    position,
+                    new_applicant,
                 )
 
-                text = (
-                    "Hakemuksesi on lähetetty ja odottaa admin-hyväksyntää. Saat ilmoituksen kun hakemus on käsitelty."
-                    if chat_data["is_finnish"]
-                    else "Your application has been sent and is awaiting admin approval. You will be notified when it's processed."
+                text = get_translation(
+                    "application_awaiting_approval", chat_data.get("is_finnish", False)
                 )
             else:
                 # For non-elected roles, add directly with APPROVED status
                 new_applicant["status"] = "APPROVED"
-                language = "fi" if chat_data["is_finnish"] else "en"
-                data_manager.add_applicant(position, new_applicant, language)
+                data_manager.add_applicant(new_applicant)
 
-                text = (
-                    "Hakemuksesi on vastaanotettu. Kiitos!"
-                    if chat_data["is_finnish"]
-                    else "Your application has been received. Thank you!"
+                text = get_translation(
+                    "application_received", chat_data.get("is_finnish", False)
                 )
 
             await query.edit_message_text(text, reply_markup=None)
         else:
-            text = (
-                "Hakemuksesi on peruttu."
-                if chat_data["is_finnish"]
-                else "Your application has been cancelled."
+            text = get_translation(
+                "application_cancelled_full", chat_data.get("is_finnish", False)
             )
             await query.edit_message_text(text, reply_markup=None)
 
@@ -421,15 +372,11 @@ async def handle_back_button(
 
     # Go back to division selection
     localized_divisions, callback_data = data_manager.get_divisions(
-        chat_data["is_finnish"]
+        chat_data.get("is_finnish", False)
     )
     keyboard = generate_keyboard(localized_divisions, callback_data)
 
-    text = (
-        "Minkä jaoksen virkaan haet?"
-        if chat_data["is_finnish"]
-        else "For which division are you applying?"
-    )
+    text = get_translation("select_division", chat_data.get("is_finnish", False))
     await query.edit_message_text(
         text=text,
         reply_markup=keyboard,
@@ -446,21 +393,25 @@ async def handle_multiple_application_choice(
     await query.answer()
 
     if query.data == "cancel_multiple":
-        text = (
-            "Hakemus peruttu." if chat_data["is_finnish"] else "Application cancelled."
+        text = get_translation(
+            "application_cancelled", chat_data.get("is_finnish", False)
         )
         await query.edit_message_text(text)
         return ConversationHandler.END
 
     elif query.data == "continue_multiple":
         # Continue with the application
-        elected_role_text = "vaaleilla valittavaan " if chat_data["is_elected"] else ""
-        elected_role_text_en = "elected " if chat_data["is_elected"] else ""
+        elected_text = (
+            get_translation("elected_role_prefix", chat_data.get("is_finnish", False))
+            if chat_data.get("is_elected", False)
+            else ""
+        )
 
-        text = (
-            f"Haet {elected_role_text}rooliin: {chat_data['loc_position']}. Mikä on nimesi?"
-            if chat_data["is_finnish"]
-            else f"You are applying to the {elected_role_text_en}role: {chat_data['loc_position']}. What is your name?"
+        text = get_translation(
+            "ask_name",
+            chat_data.get("is_finnish", False),
+            elected_text=elected_text,
+            position=chat_data.get("loc_position", ""),
         )
         await query.edit_message_text(text=text)
         return GIVING_NAME

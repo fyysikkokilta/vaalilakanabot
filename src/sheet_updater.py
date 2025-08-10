@@ -1,7 +1,7 @@
 """Update the election sheet in Fiirumi."""
 
 from datetime import datetime
-from typing import Dict
+from typing import List
 import requests
 from telegram.ext import ContextTypes
 
@@ -11,26 +11,26 @@ from .config import API_KEY, API_USERNAME, VAALILAKANA_POST_URL
 YEAR = datetime.now().year
 
 
-def data_to_markdown(data: Dict[str, DivisionData]) -> str:
+def data_to_markdown(data: List[DivisionData]) -> str:
     """Convert data to markdown."""
     # Start building the markdown
     text = f"# VAALILAKANA {YEAR} / ELECTION SHEET {YEAR}\n\n"
 
     # Iterate over each division
-    for division_data in data.values():
-        division_name = division_data["division"]
-        division_name_en = division_data["division_en"]
+    for division_data in data:
+        division_name = division_data.get("division")
+        division_name_en = division_data.get("division_en")
 
         # Add division header
         text += f"### {division_name} / {division_name_en}\n\n"
 
         # Iterate over each role in the division
-        for role_data in division_data["roles"].values():
-            role_title = role_data["title"]
-            role_title_en = role_data["title_en"]
-            role_amount = role_data["amount"]
-            role_application_dl = role_data["application_dl"]
-            role_applicants = role_data["applicants"]
+        for role_data in division_data.get("roles", []):
+            role_title = role_data.get("title")
+            role_title_en = role_data.get("title_en")
+            role_amount = role_data.get("amount")
+            role_application_dl = role_data.get("application_dl")
+            role_applicants = role_data.get("applicants", [])
             role_tag = None
 
             # Determine if the role is a board role or official role
@@ -56,8 +56,8 @@ def data_to_markdown(data: Dict[str, DivisionData]) -> str:
             if len(role_applicants) > 0:
                 text += "\n"
                 for applicant in role_applicants:
-                    applicant_name = applicant["name"]
-                    if applicant.get("status") == "ELECTED":
+                    applicant_name = applicant.get("Name")
+                    if applicant.get("Status") == "ELECTED":
                         text += f"* **{applicant_name}**\n"
                     else:
                         text += f"* {applicant_name}\n"

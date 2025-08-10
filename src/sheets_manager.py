@@ -55,14 +55,14 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         self.channels_sheet = None
 
         # Application queue for batching
-        self.application_queue = deque()
+        self.application_queue: deque[ApplicationRow] = deque()
 
         # Status update queue for batching (processed after application queue)
-        self.status_update_queue = deque()
+        self.status_update_queue: deque[ApplicationRow] = deque()
 
         # Channel operation queues for batching
-        self.channel_add_queue = deque()
-        self.channel_remove_queue = deque()
+        self.channel_add_queue: deque[int] = deque()
+        self.channel_remove_queue: deque[int] = deque()
 
         self._connect()
 
@@ -195,8 +195,8 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         roles = self.get_all_roles()
         divisions: Dict[str, DivisionDict] = {}
         for role in roles:
-            div_fi = role["Division_FI"]
-            div_en = role["Division_EN"]
+            div_fi = role.get("Division_FI")
+            div_en = role.get("Division_EN")
             if div_fi not in divisions:
                 divisions[div_fi] = {"fi": div_fi, "en": div_en}
         return list(divisions.values())
@@ -210,7 +210,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
         # Search for exact match first
         for role in all_roles:
-            if role_name in (role["Role_FI"], role["Role_EN"]):
+            if role_name in (role.get("Role_FI"), role.get("Role_EN")):
                 return role
 
         return None
@@ -226,19 +226,14 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
     def add_application(
         self,
-        role_id: str,
-        telegram_id: int,
-        name: str,
-        email: str,
-        telegram_username: str,
-        fiirumi_post: str = "",
-        status: str = "",
-        language: str = "en",
+        applicant: ApplicationRow,
     ) -> bool:
         """Queue a new application for batch processing."""
         try:
+            role_id = applicant.get("Role_ID")
+            telegram_id = applicant.get("Telegram_ID")
             # Check if application already exists
-            if self.check_application_exists(role_id, telegram_id):
+            if self.get_existing_application(role_id, telegram_id):
                 logger.warning(
                     "Application already exists for role %s and user %s",
                     role_id,
@@ -249,8 +244,8 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             # Check if application is already in queue
             for queued_app in self.application_queue:
                 if (
-                    queued_app["role_id"] == role_id
-                    and queued_app["telegram_id"] == telegram_id
+                    queued_app.get("Role_ID") == role_id
+                    and queued_app.get("Telegram_ID") == telegram_id
                 ):
                     logger.warning(
                         "Application already queued for role %s and user %s",
@@ -259,18 +254,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     )
                     return False
 
-            # Add to queue instead of directly to sheets
-            application_data = {
-                "role_id": role_id,
-                "telegram_id": telegram_id,
-                "name": name,
-                "email": email,
-                "telegram_username": telegram_username,
-                "fiirumi_post": fiirumi_post,
-                "status": status,
-                "language": language,
-            }
-            self.application_queue.append(application_data)
+            self.application_queue.append(applicant)
 
             logger.info(
                 "Queued application for role %s by user %s", role_id, telegram_id
@@ -295,15 +279,15 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             # Double-check for existing applications (in case they were added while queued)
             new_applications = []
             for app in applications_to_add:
-                if not self.check_application_exists(
-                    app["role_id"], app["telegram_id"]
+                if not self.get_existing_application(
+                    app.get("Role_ID"), app.get("Telegram_ID")
                 ):
                     new_applications.append(app)
                 else:
                     logger.warning(
                         "Skipping duplicate application for role %s and user %s",
-                        app["role_id"],
-                        app["telegram_id"],
+                        app.get("Role_ID"),
+                        app.get("Telegram_ID"),
                     )
 
             if not new_applications:
@@ -317,14 +301,14 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             batch_data = []
             for app in new_applications:
                 row_data = [
-                    app["role_id"],
-                    app["telegram_id"],
-                    app["name"],
-                    app["email"],
-                    app["telegram_username"],
-                    app["fiirumi_post"],
-                    app["status"],
-                    app["language"],
+                    app.get("Role_ID"),
+                    app.get("Telegram_ID"),
+                    app.get("Name"),
+                    app.get("Email"),
+                    app.get("Telegram"),
+                    app.get("Fiirumi_Post"),
+                    app.get("Status"),
+                    app.get("Language"),
                 ]
                 batch_data.append(row_data)
 
@@ -347,20 +331,25 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 self.application_queue.append(app)
             return False
 
-    def check_application_exists(self, role_id: str, telegram_id: int) -> bool:
-        """Check if an application already exists for a role and user."""
+    def get_existing_application(
+        self, role_id: str, telegram_id: int
+    ) -> Optional[ApplicationRow]:
+        """Get existing application for a role and user."""
         try:
             applications = self.get_applications_for_role(role_id)
-            return any(app["Telegram_ID"] == telegram_id for app in applications)
+            return next(
+                (app for app in applications if app.get("Telegram_ID") == telegram_id),
+                None,
+            )
         except Exception as e:
-            logger.error("Error checking application existence: %s", e)
-            return False
+            logger.error("Error getting existing application: %s", e)
+            return None
 
     def get_applications_for_role(self, role_id: str) -> List[ApplicationRow]:
         """Get all applications for a specific role."""
         try:
             all_applications = self.get_all_applications()
-            return [app for app in all_applications if app["Role_ID"] == role_id]
+            return [app for app in all_applications if app.get("Role_ID") == role_id]
         except Exception as e:
             logger.error("Error getting applications for role %s: %s", role_id, e)
             return []
@@ -370,7 +359,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         try:
             all_applications = self.get_all_applications()
             return [
-                app for app in all_applications if app["Telegram_ID"] == telegram_id
+                app for app in all_applications if app.get("Telegram_ID") == telegram_id
             ]
         except Exception as e:
             logger.error("Error getting applications for user %s: %s", telegram_id, e)
@@ -388,14 +377,14 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             # Check if there's already an update for this application in the queue
             for queued_update in self.status_update_queue:
                 if (
-                    queued_update["role_id"] == role_id
-                    and queued_update["telegram_id"] == telegram_id
+                    queued_update.get("Role_ID") == role_id
+                    and queued_update.get("Telegram_ID") == telegram_id
                 ):
                     # Update existing queue entry
                     if status is not None:
-                        queued_update["status"] = status
+                        queued_update["Status"] = status
                     if fiirumi_post is not None:
-                        queued_update["fiirumi_post"] = fiirumi_post
+                        queued_update["Fiirumi_Post"] = fiirumi_post
                     logger.info(
                         "Updated queued status change for role %s, user %s",
                         role_id,
@@ -404,12 +393,12 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     return True
 
             # Add new status update to queue
-            status_update = {
-                "role_id": role_id,
-                "telegram_id": telegram_id,
-                "status": status,
-                "fiirumi_post": fiirumi_post,
-            }
+            status_update = ApplicationRow(
+                Role_ID=role_id,
+                Telegram_ID=telegram_id,
+                Status=status,
+                Fiirumi_Post=fiirumi_post,
+            )
             self.status_update_queue.append(status_update)
 
             logger.info(
@@ -449,10 +438,10 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             processed_count = 0
 
             for update_data in updates_to_process:
-                role_id = update_data["role_id"]
-                telegram_id = update_data["telegram_id"]
-                status = update_data["status"]
-                fiirumi_post = update_data["fiirumi_post"]
+                role_id = update_data.get("Role_ID")
+                telegram_id = update_data.get("Telegram_ID")
+                status = update_data.get("Status")
+                fiirumi_post = update_data.get("Fiirumi_Post")
 
                 # Find the row for this application
                 row_found = False
@@ -565,9 +554,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 self.channel_remove_queue.append(chat_id)
             return False
 
-    def get_election_data(
-        self, invalidate_cache: bool = False
-    ) -> Dict[str, DivisionData]:
+    def get_election_data(self, invalidate_cache: bool = False) -> List[DivisionData]:
         """Get election data structured for display/export."""
         try:
             if invalidate_cache:
@@ -579,57 +566,38 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             roles = self.get_all_roles()
             all_applications = self.get_all_applications()
 
-            # Group by division
-            election_data = {}
+            # Group by division using arrays
+            divisions_dict: Dict[str, DivisionData] = {}
 
             for role in roles:
-                division_fi = role["Division_FI"]
-                division_en = role["Division_EN"]
+                division_fi = role.get("Division_FI")
+                division_en = role.get("Division_EN")
 
-                if division_fi not in election_data:
-                    election_data[division_fi] = {
-                        "division": division_fi,
-                        "division_en": division_en,
-                        "roles": {},
-                    }
-
-                # Get applications for this role
-                role_applications = [
-                    app for app in all_applications if app["Role_ID"] == role["ID"]
-                ]
-
-                # Convert applications to display format and filter by status
-                # Show only APPROVED or ELECTED applicants for output views
-                applicants = []
-                for app in role_applications:
-                    status = app.get("Status", "")
-                    if status not in ("APPROVED", "ELECTED"):
-                        continue
-                    applicants.append(
-                        {
-                            "user_id": app["Telegram_ID"],
-                            "name": app["Name"],
-                            "email": app["Email"],
-                            "telegram": app["Telegram"],
-                            "fiirumi": app["Fiirumi_Post"],
-                            "status": status,
-                        }
+                if division_fi not in divisions_dict:
+                    divisions_dict[division_fi] = DivisionData(
+                        division=division_fi,
+                        division_en=division_en,
+                        roles={},
                     )
 
-                election_data[division_fi]["roles"][role["Role_FI"]] = {
-                    "title": role["Role_FI"],
-                    "title_en": role["Role_EN"],
-                    "amount": role.get("Amount"),
-                    "application_dl": role.get("Deadline"),
-                    "type": role.get("Type", "NON-ELECTED"),
-                    "applicants": applicants,
-                }
+                # Get approved/elected applications for this role
+                applicants = [
+                    app
+                    for app in all_applications
+                    if app.get("Role_ID") == role.get("ID")
+                    and app.get("Status", "") in ("APPROVED", "ELECTED")
+                ]
 
-            return election_data
+                role_data = role.copy()
+                role_data["applicants"] = applicants
+                divisions_dict[division_fi].get("roles", []).append(role_data)
+
+            # Convert to array of divisions
+            return list(divisions_dict.values())
 
         except Exception as e:
             logger.error("Error getting election data: %s", e)
-            return {}
+            return []
 
     # Channel management methods
     @cached(cache=_channels_cache)
@@ -638,7 +606,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         try:
             all_data = self.channels_sheet.get_all_records()
             return [
-                ChannelRow(Channel_ID=int(record["Chat_ID"])) for record in all_data
+                ChannelRow(Channel_ID=int(record.get("Chat_ID"))) for record in all_data
             ]
         except Exception as e:
             logger.error("Error getting channels: %s", e)
@@ -664,7 +632,9 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
             # Check if channel already exists in current data
             existing_channels = self.get_all_channels()
-            if any(channel["Channel_ID"] == chat_id for channel in existing_channels):
+            if any(
+                channel.get("Channel_ID") == chat_id for channel in existing_channels
+            ):
                 logger.info("Channel %s already exists", chat_id)
                 return True
 
@@ -698,7 +668,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             # Check if channel exists in current data
             existing_channels = self.get_all_channels()
             if not any(
-                channel["Channel_ID"] == chat_id for channel in existing_channels
+                channel.get("Channel_ID") == chat_id for channel in existing_channels
             ):
                 logger.warning("Channel %s not found in current data", chat_id)
                 return False
@@ -711,20 +681,3 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         except Exception as e:
             logger.error("Error queueing channel removal: %s", e)
             return False
-
-    def get_all_pending_applications(self) -> List[Dict]:
-        """Get all pending applications from Applications sheet where Status is empty."""
-        try:
-            all_applications = self.get_all_applications()
-            pending_apps = []
-
-            for app in all_applications:
-                # Check if Status (or legacy Admin_Approved) is empty (pending)
-                status = app.get("Status", app.get("Admin_Approved", ""))
-                if status == "":
-                    pending_apps.append(app)
-
-            return pending_apps
-        except Exception as e:
-            logger.error("Error getting pending applications: %s", e)
-            return []

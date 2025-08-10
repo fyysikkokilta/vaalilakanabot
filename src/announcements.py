@@ -35,12 +35,12 @@ async def announce_to_channels(
     for channel in data_manager.channels:
         try:
             await context.bot.send_message(
-                channel["Channel_ID"], message, parse_mode="HTML"
+                channel.get("Channel_ID"), message, parse_mode="HTML"
             )
             time.sleep(0.5)
         except Exception as e:
             logger.error(e)
-            data_manager.remove_channel(channel["Channel_ID"])
+            data_manager.remove_channel(channel.get("Channel_ID"))
             continue
 
 
@@ -83,19 +83,23 @@ async def parse_fiirumi_posts(
             linked_applicants = []
 
             # Check all elected roles for updates using flattened structure
-            for position, role_data in data_manager.vaalilakana.items():
+            for role_data in data_manager.vaalilakana:
                 for applicant in role_data.get("applicants", []):
                     if check_title_matches_applicant_and_role(
                         title,
-                        applicant["name"],
-                        role_data.get("title", position),
-                        role_data.get("title_en", position),
+                        applicant.get("Name"),
+                        role_data.get("title"),
+                        role_data.get("title_en"),
                     ):
                         # Link the post to this applicant (queue the status update)
                         data_manager.set_applicant_fiirumi(
-                            position, applicant["name"], fiirumi_link
+                            role_data.get("title"),
+                            applicant.get("Name"),
+                            fiirumi_link,
                         )
-                        linked_applicants.append(f"{position}: {applicant['name']}")
+                        linked_applicants.append(
+                            f"{role_data.get('title')}: {applicant.get('Name')}"
+                        )
 
             # Log successful auto-links
             if linked_applicants:

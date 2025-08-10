@@ -10,3 +10,6 @@ max-line-length=160
 [MESSAGES CONTROL]
 disable=
     broad-except,
+
+[TYPECHECK]
+generated-members =
