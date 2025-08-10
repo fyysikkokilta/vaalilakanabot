@@ -4,7 +4,7 @@ from typing import TypedDict, List, Optional, Literal
 
 
 RoleType = Literal["BOARD", "ELECTED", "NON-ELECTED", "AUDITOR"]
-ApplicationStatus = Literal["APPROVED", "DENIED", "REMOVED", "ELECTED", ""]
+ApplicationStatus = Literal["APPROVED", "DENIED", "REMOVED", "ELECTED", "PENDING"]
 
 
 class ElectionStructureRow(TypedDict):
@@ -23,6 +23,7 @@ class ElectionStructureRow(TypedDict):
 class ApplicationRow(TypedDict):
     """Row in the applications sheet."""
 
+    Timestamp: str
     Role_ID: str
     Telegram_ID: int
     Name: str
@@ -36,30 +37,30 @@ class ApplicationRow(TypedDict):
 class DivisionDict(TypedDict):
     """Division dictionary."""
 
-    fi: str
-    en: str
+    Division_FI: str
+    Division_EN: str
 
 
+# For election sheet data
 class RoleData(TypedDict):
     """Role data dictionary."""
 
-    title: str
-    title_en: str
-    amount: Optional[str]
-    application_dl: Optional[str]
-    type: RoleType
-    applicants: List[ApplicationRow]
-    # Optional denormalized division information for flattened views
-    division: Optional[str]
-    division_en: Optional[str]
+    Role_FI: str
+    Role_EN: str
+    Amount: Optional[str]
+    Deadline: Optional[str]
+    Type: RoleType
+    Applicants: List[ApplicationRow]
+    Division_FI: Optional[str]
+    Division_EN: Optional[str]
 
 
 class DivisionData(TypedDict):
     """Division data dictionary."""
 
-    division: str
-    division_en: str
-    roles: List[RoleData]
+    Division_FI: str
+    Division_EN: str
+    Roles: List[RoleData]
 
 
 class ChannelRow(TypedDict):

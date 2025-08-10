@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes
 from .config import ADMIN_CHAT_ID
 from .sheets_data_manager import DataManager
 from .announcements import announce_to_channels
-from .utils import create_fiirumi_link, get_notification_text
+from .utils import create_fiirumi_link, get_notification_text, get_role_name
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -118,25 +118,44 @@ async def remove_applicant(
             raise ValueError("Invalid parameters") from e
 
         # Find position by Finnish or English name
-        found_position = data_manager.find_role_by_name(position)
-        if not found_position:
-            # Show available positions
-            all_positions = data_manager.get_all_roles()
-            position_list = "\n".join(
-                [f"• {pos['Role_FI']} / {pos['Role_EN']}" for pos in all_positions[:20]]
-            )  # Limit to first 20
-            await update.message.reply_text(
-                f"Unknown position: {position}\n\n"
-                f"Available positions (showing first 20):\n{position_list}"
-            )
+        role = data_manager.find_role_by_name(position)
+        if not role:
+            await update.message.reply_text(f"Unknown position: {position}")
             return
 
-        success = await data_manager.remove_applicant(found_position, name, context)
-        if success:
-            await update.message.reply_text(f"Removed:\n{found_position}: {name}")
+        success, app_data = data_manager.remove_applicant(role, name)
+        if success and app_data:
+            await update.message.reply_text(f"Removed:\n{role.get('Role_EN')}: {name}")
+
+            # Send notification to the removed applicant
+            try:
+                user_language = app_data.get("Language", "en")
+                notification_text = get_notification_text(
+                    "removed",
+                    get_role_name(role, user_language != "en"),
+                    user_language,
+                )
+
+                await context.bot.send_message(
+                    chat_id=app_data.get("Telegram_ID"),
+                    text=notification_text,
+                    parse_mode="HTML",
+                )
+                logger.info(
+                    "Sent removal notification to user %s for position %s in %s",
+                    app_data.get("Telegram_ID"),
+                    role.get("Role_EN"),
+                    user_language,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to notify user %s about removal: %s",
+                    app_data.get("Telegram_ID"),
+                    e,
+                )
         else:
             await update.message.reply_text(
-                f"Failed to remove applicant: {name} from {found_position}. Check if the applicant exists for this position."
+                f"Failed to remove applicant: {name} from {role.get('Role_EN')}. Check if the applicant exists for this position."
             )
     except Exception as e:
         logger.error(e)
@@ -171,7 +190,7 @@ async def add_fiirumi_to_applicant(update: Update, data_manager: DataManager):
         data_manager.set_applicant_fiirumi(found_position, name, fiirumi)
 
         await update.message.reply_html(
-            f'Added Fiirumi:\n{found_position}: <a href="{fiirumi}">{name}</a>',
+            f'Added Fiirumi:\n{found_position.get("Role_EN")}: <a href="{fiirumi}">{name}</a>',
         )
     except Exception as e:
         logger.error(e)
@@ -196,13 +215,15 @@ async def unassociate_fiirumi(update: Update, data_manager: DataManager):
             return
 
         # Find position by Finnish or English name
-        found_position = data_manager.find_role_by_name(position)
-        if not found_position:
+        role = data_manager.find_role_by_name(position)
+        if not role:
             await update.message.reply_text(f"Unknown position: {position}")
             return
 
-        data_manager.set_applicant_fiirumi(found_position, name, "")
-        await update.message.reply_text(f"Fiirumi link removed:\n{name}")
+        data_manager.set_applicant_fiirumi(role, name, "")
+        await update.message.reply_text(
+            f"Fiirumi link removed:\n{role.get('Role_EN')}: {name}"
+        )
     except Exception as e:
         logger.error(e)
 
@@ -228,31 +249,30 @@ async def add_elected_tag(
             raise ValueError from e
 
         # Find position by Finnish or English name
-        found_position = data_manager.find_role_by_name(position)
-        if not found_position:
+        role = data_manager.find_role_by_name(position)
+        if not role:
             await update.message.reply_text(f"Unknown position: {position}")
             return
 
-        data_manager.set_applicant_elected(found_position, name)
-        await update.message.reply_text(f"Applicant elected:\n{found_position}: {name}")
+        data_manager.set_applicant_elected(role, name)
+        await update.message.reply_text(
+            f"Applicant elected:\n{role.get('Role_EN')}: {name}"
+        )
 
         # Find the user's Telegram ID to send them a notification
-        role = data_manager.find_role_by_name(found_position)
         if role:
-            applications = data_manager.sheets_manager.get_applications_for_role(
-                role.get("ID")
-            )
+            applications = data_manager.get_applications_for_role(role.get("ID"))
             for app in applications:
                 if app.get("Name") == name:
                     user_id = app.get("Telegram_ID")
-                    language = app.get(
-                        "Language", "en"
-                    )  # Default to English if not specified
+                    language = app.get("Language", "en")
 
                     # Send notification to the elected user
                     try:
                         notification_text = get_notification_text(
-                            "elected", found_position, language
+                            "elected",
+                            get_role_name(role, language != "en"),
+                            language,
                         )
 
                         await context.bot.send_message(
@@ -261,7 +281,7 @@ async def add_elected_tag(
                         logger.info(
                             "Election notification sent to user %s for position %s",
                             user_id,
-                            found_position,
+                            role.get("Role_EN"),
                         )
                     except Exception as e:
                         logger.error("Failed to notify elected user %s: %s", user_id, e)
@@ -271,18 +291,20 @@ async def add_elected_tag(
             role_type = role.get("Type")
             if role_type in ("BOARD", "ELECTED"):
                 await announce_to_channels(
-                    f"🎉 <i>{name}</i> elected for <b>{found_position}</b>",
+                    f"🎉 <i>{name}</i> elected for <b>{role.get("Role_EN")}</b>",
                     context,
                     data_manager,
                 )
                 logger.info(
                     "Election announcement sent to channels for %s: %s",
-                    found_position,
+                    role.get("Role_EN"),
                     name,
                 )
 
         logger.info(
-            "Applicant %s elected for position %s by admin", name, found_position
+            "Applicant %s elected for position %s by admin",
+            name,
+            role.get("Role_EN"),
         )
 
     except Exception as e:

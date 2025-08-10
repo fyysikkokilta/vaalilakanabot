@@ -5,7 +5,7 @@ from typing import List, Optional
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from .config import BASE_URL
-from .types import RoleData
+from .types import ElectionStructureRow, RoleData
 
 
 def generate_keyboard(
@@ -53,6 +53,11 @@ def check_title_matches_applicant_and_role(
     return name_in_title and role_in_title
 
 
+def get_role_name(role: ElectionStructureRow, is_finnish: bool) -> str:
+    """Get the role name in the requested language (fi|en)."""
+    return role.get("Role_EN") if not is_finnish else role.get("Role_FI")
+
+
 def vaalilakana_to_string(vaalilakana: List[RoleData], language: str) -> str:
     """Build vaalilakana message in the requested language (fi|en).
 
@@ -69,7 +74,7 @@ def vaalilakana_to_string(vaalilakana: List[RoleData], language: str) -> str:
         "officials": (
             "<b>----------Toimihenkilöt----------</b>\n"
             if is_finnish
-            else "<b>----------Officials----------</b>\n"
+            else "<b>------------Officials------------</b>\n"
         ),
     }
     elected_label = get_translation("elected_label", is_finnish)
@@ -78,7 +83,7 @@ def vaalilakana_to_string(vaalilakana: List[RoleData], language: str) -> str:
     board_roles = []
     officials_roles = []
     for role_data in vaalilakana:
-        role_type = role_data.get("type")
+        role_type = role_data.get("Type")
         if role_type == "BOARD":
             board_roles.append((role_data))
         elif role_type == "ELECTED":
@@ -88,9 +93,9 @@ def vaalilakana_to_string(vaalilakana: List[RoleData], language: str) -> str:
         text = ""
         for role_data in roles:
             # Localized title
-            title = role_data.get("title") if is_finnish else role_data.get("title_en")
+            title = role_data.get("Role_FI") if is_finnish else role_data.get("Role_EN")
             text += f"<b>{title}:</b>\n"
-            for applicant in role_data.get("applicants", []):
+            for applicant in role_data.get("Applicants", []):
                 name = applicant.get("Name", "")
                 link = applicant.get("Fiirumi_Post", "")
                 elected = applicant.get("Status") == "ELECTED"
@@ -139,7 +144,7 @@ def map_application_status(status: str, is_finnish: bool = True) -> str:
         "DENIED": ("Hylätty", "Rejected"),
         "REMOVED": ("Poistettu", "Removed"),
         "ELECTED": ("Valittu", "Elected"),
-        "": ("Odottaa", "Pending"),
+        "PENDING": ("Odottaa", "Pending"),
     }
 
     finnish_text, english_text = status_map.get(status, ("Tuntematon", "Unknown"))
@@ -164,17 +169,17 @@ def get_notification_text(
         "rejected": (
             f"❌ <b>Hakemuksesi on hylätty</b>\n\n"
             f"Valitettavasti hakemuksesi virkaan <b>{position}</b> on hylätty. "
-            f"Voit ottaa yhteyttä admineihin lisätietojen saamiseksi.",
+            f"Voit ottaa yhteyttä raatiin lisätietojen saamiseksi.",
             f"❌ <b>Your application has been rejected</b>\n\n"
             f"Unfortunately, your application for the position <b>{position}</b> has been rejected. "
-            f"You can contact the admins for more information.",
+            f"You can contact the board for more information.",
         ),
         "removed": (
             f"🗑️ <b>Hakemuksesi on poistettu</b>\n\n"
-            f"Hakemuksesi virkaan <b>{position}</b> on poistettu adminien toimesta.\n\n"
+            f"Hakemuksesi virkaan <b>{position}</b> on poistettu raadin toimesta.\n\n"
             f"Jos haluat lisätietoja, voit ottaa yhteyttä raatiin.",
             f"🗑️ <b>Your application has been removed</b>\n\n"
-            f"Your application for the position <b>{position}</b> has been removed by the admins.\n\n"
+            f"Your application for the position <b>{position}</b> has been removed by the board.\n\n"
             f"If you want more information, you can contact the board.",
         ),
         "elected": (
@@ -217,6 +222,10 @@ def get_translation(key: str, is_finnish: bool = True, **kwargs) -> str:
             "Olet jo hakenut tähän rooliin!",
             "You have already applied to this position!",
         ),
+        "already_elected": (
+            "Olet jo valittu tähän rooliin!",
+            "You have already been elected to this position!",
+        ),
         "pending_application": (
             "Sinulla on jo odottava hakemus tähän rooliin!",
             "You already have a pending application for this position!",
@@ -231,18 +240,18 @@ def get_translation(key: str, is_finnish: bool = True, **kwargs) -> str:
             "Your application has been cancelled.",
         ),
         "application_awaiting_approval": (
-            "Hakemuksesi on lähetetty ja odottaa admin-hyväksyntää. Saat ilmoituksen kun hakemus on käsitelty.",
-            "Your application has been sent and is awaiting admin approval. You will be notified when it's processed.",
+            "Hakemuksesi on lähetetty ja odottaa raadin hyväksyntää. Saat ilmoituksen kun hakemus on käsitelty.",
+            "Your application has been sent and is awaiting board approval. You will be notified when it's processed.",
         ),
         # Warning messages
         "multiple_application_warning": (
             "⚠️ <b>Varoitus: Olet jo hakenut vaaleilla valittavaan virkaan!</b>\n\n"
-            "Olet jo hakenut virkaan: <b>{elected_position}</b>\n\n"
-            "Jos sinulla on vararooleja, kerro niistä raadille suoraan.\n\n"
+            "Olet jo hakenut virkaan: <b>{elected_positions}</b>\n\n"
+            "Jos sinulla on vararooleja, kerro niistä raadille.\n\n"
             "Haluatko jatkaa hakemusta tähän rooliin?",
             "⚠️ <b>Warning: You have already applied to an elected position!</b>\n\n"
-            "You have already applied to: <b>{elected_position}</b>\n\n"
-            "If you have backup roles, tell the board directly.\n\n"
+            "You have already applied to: <b>{elected_positions}</b>\n\n"
+            "If you have backup roles, tell the board.\n\n"
             "Do you want to continue with this application?",
         ),
         # Validation errors
@@ -276,8 +285,8 @@ def get_translation(key: str, is_finnish: bool = True, **kwargs) -> str:
         # Role type indicators
         "elected_role_prefix": ("vaaleilla valittavaan ", "elected "),
         "admin_approval_note": (
-            " (Hakemus vaatii admin-hyväksynnän ennen lisäämistä vaalilakanaan)",
-            " (Application requires admin approval before being added to the election sheet)",
+            " (Hakemus vaatii raadin hyväksynnän ennen lisäämistä vaalilakanaan)",
+            " (Application requires board approval before being added to the election sheet)",
         ),
         # Status labels
         "elected_label": ("valittu", "elected"),

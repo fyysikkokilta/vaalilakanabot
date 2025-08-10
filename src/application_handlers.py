@@ -2,6 +2,7 @@
 
 import logging
 import re
+from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler, ContextTypes
@@ -15,7 +16,7 @@ from .config import (
     GIVING_EMAIL,
     CONFIRMING_APPLICATION,
 )
-from .utils import generate_keyboard, get_translation
+from .utils import generate_keyboard, get_translation, get_role_name
 from .admin_approval import send_admin_approval_request
 from .sheets_data_manager import DataManager
 
@@ -40,7 +41,7 @@ async def hae(
     keyboard = generate_keyboard(localized_divisions, callback_data)
 
     await update.message.reply_text(
-        get_translation("select_division", is_finnish=False),
+        get_translation("select_division", chat_data.get("is_finnish", False)),
         reply_markup=keyboard,
     )
     return SELECTING_DIVISION
@@ -57,7 +58,7 @@ async def apply(
     keyboard = generate_keyboard(localized_divisions, callback_data)
 
     await update.message.reply_text(
-        get_translation("select_division", is_finnish=False),
+        get_translation("select_division", chat_data.get("is_finnish", False)),
         reply_markup=keyboard,
     )
     return SELECTING_DIVISION
@@ -98,59 +99,55 @@ async def select_role(
     await query.answer()
 
     user_id = update.effective_user.id
-    position = query.data
+    role_id = query.data
 
     # Check if user already has any application (approved or pending) for this position
-    role_row = data_manager.find_role_by_name(position)
+    role_row = data_manager.get_role_by_id(role_id)
     is_elected_type = role_row and role_row.get("Type") in ("BOARD", "ELECTED")
 
     if not role_row:
         await query.edit_message_text("Role not found.")
         return ConversationHandler.END
 
-    existing_application = data_manager.sheets_manager.get_existing_application(
-        role_row.get("ID", ""), user_id
+    user_applications = data_manager.get_applications_for_user(user_id)
+    existing_application = next(
+        (app for app in user_applications if app.get("Role_ID") == role_id),
+        None,
     )
 
     if existing_application:
-        if existing_application.get("Status", "") == "APPROVED":
-            text = get_translation(
-                "already_applied", chat_data.get("is_finnish", False)
-            )
-        else:  # Status is empty (pending)
-            text = get_translation(
-                "pending_application", chat_data.get("is_finnish", False)
-            )
+        if existing_application.get("Status", "PENDING") == "APPROVED":
+            key = "already_applied"
+        elif existing_application.get("Status", "PENDING") == "ELECTED":
+            key = "already_elected"
+        else:  # Status is pending
+            key = "pending_application"
+
+        text = get_translation(key, chat_data.get("is_finnish", False))
         await query.edit_message_text(text)
         return ConversationHandler.END
 
     # Check if user already has an approved or pending application for any elected role
     if is_elected_type:
-        has_elected_application = False
-        elected_position = ""
+        other_roles = []
 
         # Check for any applications (approved or pending) to elected roles
-        for app_row in data_manager.applications:
-            if int(app_row.get("Telegram_ID", 0)) != int(user_id):
-                continue
+        for application in user_applications:
+            app_role = data_manager.get_role_by_id(application.get("Role_ID", ""))
 
-            role_id = app_row.get("Role_ID", "")
-            if not role_id:
-                continue
+            if app_role and app_role.get("Type") in ("BOARD", "ELECTED"):
+                other_roles.append(app_role)
 
-            # Find role by ID and ensure it's an elected type
-            roles = data_manager.get_all_roles()
-            role = next((r for r in roles if r.get("ID") == role_id), None)
-            if role and role.get("Type") in ("BOARD", "ELECTED"):
-                has_elected_application = True
-                elected_position = role.get("Role_FI", "") or role.get("Role_EN", "")
-                break
-
-        if has_elected_application:
+        if other_roles:
             warning_text = get_translation(
                 "multiple_application_warning",
                 chat_data.get("is_finnish", False),
-                elected_position=elected_position,
+                elected_positions=", ".join(
+                    [
+                        get_role_name(role, chat_data.get("is_finnish", False))
+                        for role in other_roles
+                    ]
+                ),
             )
 
             keyboard = InlineKeyboardMarkup(
@@ -175,23 +172,11 @@ async def select_role(
             await query.edit_message_text(
                 warning_text, reply_markup=keyboard, parse_mode="HTML"
             )
-            chat_data["position"] = position
-            chat_data["loc_position"] = (
-                chat_data.get("position", "")
-                if chat_data.get("is_finnish", False)
-                else (data_manager.find_role_by_name(position) or {}).get(
-                    "Role_EN", position
-                )
-            )
+            chat_data["role_id"] = role_id
             chat_data["is_elected"] = True
             return SELECTING_ROLE
 
-    chat_data["position"] = position
-    chat_data["loc_position"] = (
-        chat_data.get("position", "")
-        if chat_data.get("is_finnish", False)
-        else (data_manager.find_role_by_name(position) or {}).get("Role_EN", position)
-    )
+    chat_data["role_id"] = role_id
     chat_data["is_elected"] = bool(is_elected_type)
 
     elected_text = (
@@ -204,7 +189,7 @@ async def select_role(
         "ask_name",
         chat_data.get("is_finnish", False),
         elected_text=elected_text,
-        position=chat_data.get("loc_position", ""),
+        position=get_role_name(role_row, chat_data.get("is_finnish", False)),
     )
     await query.edit_message_text(
         text=text,
@@ -239,7 +224,9 @@ async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return GIVING_EMAIL
 
 
-async def enter_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def enter_email(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
+) -> int:
     """Handle email input."""
     chat_data = context.chat_data
     email = update.message.text.strip()
@@ -261,10 +248,12 @@ async def enter_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         else ""
     )
 
+    role_row = data_manager.get_role_by_id(chat_data.get("role_id", ""))
+
     text = get_translation(
         "application_details",
         chat_data.get("is_finnish", False),
-        position=chat_data.get("loc_position", ""),
+        position=get_role_name(role_row, chat_data.get("is_finnish", False)),
         name=chat_data.get("name", ""),
         email=chat_data.get("email", ""),
         telegram=chat_data.get("telegram", ""),
@@ -296,20 +285,17 @@ async def confirm_application(
     await query.answer()
     try:
         if query.data == "yes":
-            position = chat_data.get("position", "")
-            role_row = data_manager.find_role_by_name(position)
-            if not role_row:
-                logger.error("Role not found: %s", position)
-                return ConversationHandler.END
+            role_row = data_manager.get_role_by_id(chat_data.get("role_id", ""))
 
             new_applicant = ApplicationRow(
+                Timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 Role_ID=role_row.get("ID", ""),
                 Telegram_ID=update.effective_user.id,
                 Name=chat_data.get("name", ""),
                 Email=chat_data.get("email", ""),
                 Telegram=chat_data.get("telegram", ""),
                 Fiirumi_Post="",
-                Status="",
+                Status="PENDING",
                 Language="fi" if chat_data.get("is_finnish", False) else "en",
             )
 
@@ -324,8 +310,6 @@ async def confirm_application(
                 await send_admin_approval_request(
                     context,
                     data_manager,
-                    f"{role_row['ID']}_{new_applicant['Telegram_ID']}",
-                    position,
                     new_applicant,
                 )
 
@@ -334,7 +318,7 @@ async def confirm_application(
                 )
             else:
                 # For non-elected roles, add directly with APPROVED status
-                new_applicant["status"] = "APPROVED"
+                new_applicant["Status"] = "APPROVED"
                 data_manager.add_applicant(new_applicant)
 
                 text = get_translation(

@@ -4,9 +4,8 @@ import logging
 from typing import Dict, List, Optional
 from datetime import datetime
 
-from telegram.ext import ContextTypes
 from .sheets_manager import SheetsManager
-from .utils import get_notification_text
+from .utils import get_role_name
 from .types import (
     ElectionStructureRow,
     DivisionDict,
@@ -47,18 +46,24 @@ class DataManager:
         """Find a role by name using SheetsManager's cached lookup."""
         return self.sheets_manager.find_role_by_name(role_name)
 
-    def get_divisions(self, is_finnish: bool = True) -> tuple[List[str], List[str]]:
+    def get_role_by_id(self, role_id: str) -> Optional[ElectionStructureRow]:
+        """Get a role by ID using SheetsManager's cached lookup."""
+        return self.sheets_manager.get_role_by_id(role_id)
+
+    def get_divisions(self, is_finnish: bool = False) -> tuple[List[str], List[str]]:
         """Get divisions with localization."""
         divisions: List[DivisionDict] = self.sheets_manager.get_divisions()
         localized_divisions: List[str] = [
-            division.get("fi") if is_finnish else division.get("en")
+            division.get("Division_FI") if is_finnish else division.get("Division_EN")
             for division in divisions
         ]
-        callback_data: List[str] = [division.get("fi") for division in divisions]
+        callback_data: List[str] = [
+            division.get("Division_FI") for division in divisions
+        ]
         return localized_divisions, callback_data
 
     def get_positions(
-        self, division: str, is_finnish: bool = True
+        self, division: str, is_finnish: bool = False
     ) -> tuple[List[str], List[str]]:
         """Get positions for a division with deadline filtering."""
         current_date = datetime.now()
@@ -87,15 +92,43 @@ class DataManager:
 
         localized_positions = []
         for role in filtered_roles:
-            position_name = role.get("Role_FI") if is_finnish else role.get("Role_EN")
+            position_name = get_role_name(role, is_finnish)
             # Add emoji for elected positions (BOARD and ELECTED types)
-            if role.get("Type") in ("BOARD", "ELECTED"):
+            if role.get("Type") != "NON_ELECTED":
                 position_name = f"🗳️ {position_name}"
             localized_positions.append(position_name)
 
-        callback_data = [role.get("Role_FI") for role in filtered_roles]
+        callback_data = [role.get("ID") for role in filtered_roles]
 
         return localized_positions, callback_data
+
+    def get_applications_for_role(self, role_id: str) -> List[ApplicationRow]:
+        """Get all applications for a specific role."""
+        try:
+            all_applications = self.sheets_manager.get_all_applications()
+            return [
+                app
+                for app in all_applications
+                if app.get("Role_ID") == role_id
+                and app.get("Status", "PENDING") not in ("DENIED", "REMOVED")
+            ]
+        except Exception as e:
+            logger.error("Error getting applications for role %s: %s", role_id, e)
+            return []
+
+    def get_applications_for_user(self, telegram_id: int) -> List[ApplicationRow]:
+        """Get all applications for a specific user."""
+        try:
+            all_applications = self.sheets_manager.get_all_applications()
+            return [
+                app
+                for app in all_applications
+                if app.get("Telegram_ID") == telegram_id
+                and app.get("Status", "PENDING") not in ("DENIED", "REMOVED")
+            ]
+        except Exception as e:
+            logger.error("Error getting applications for user %s: %s", telegram_id, e)
+            return []
 
     def add_applicant(
         self,
@@ -104,18 +137,18 @@ class DataManager:
         """Add a new applicant to a position."""
         return self.sheets_manager.add_application(applicant)
 
-    async def remove_applicant(
+    def remove_applicant(
         self,
-        position: str,
+        role: ElectionStructureRow,
         applicant_name: str,
-        context: ContextTypes.DEFAULT_TYPE,
-    ) -> bool:
-        """Remove an applicant by marking Status as REMOVED and notify them."""
-        role = self.find_role_by_name(position)
-        if not role:
-            return False
+    ) -> tuple[bool, dict | None]:
+        """Remove an applicant by marking Status as REMOVED.
 
-        applications = self.sheets_manager.get_applications_for_role(role.get("ID"))
+        Returns:
+            Tuple of (success: bool, application_data: dict | None)
+            application_data contains the removed application info for notification purposes
+        """
+        applications = self.get_applications_for_role(role.get("ID"))
         for app in applications:
             if app.get("Name") == applicant_name:
                 telegram_id = app.get("Telegram_ID")
@@ -124,43 +157,18 @@ class DataManager:
                 )
 
                 if success:
-                    # Send notification to the applicant
-                    try:
-                        # Get the user's language preference from the application
-                        user_language = app.get("Language", "en")
-                        notification_text = get_notification_text(
-                            "removed", position, user_language
-                        )
+                    return success, app
 
-                        await context.bot.send_message(
-                            chat_id=telegram_id,
-                            text=notification_text,
-                            parse_mode="HTML",
-                        )
-                        logger.info(
-                            "Sent removal notification to user %s for position %s in %s",
-                            telegram_id,
-                            position,
-                            user_language,
-                        )
-                    except Exception as e:
-                        logger.error(
-                            "Failed to notify user %s about removal: %s", telegram_id, e
-                        )
+                return success, None
 
-                return success
-        return False
+        return False, None
 
     def set_applicant_fiirumi(
-        self, position: str, applicant_name: str, fiirumi_link: str
+        self, role: ElectionStructureRow, applicant_name: str, fiirumi_link: str
     ) -> bool:
         """Set the fiirumi link for an applicant."""
-        role = self.find_role_by_name(position)
-        if not role:
-            return False
-
         # Find the applicant by name (this is not ideal, should use telegram_id)
-        applications = self.sheets_manager.get_applications_for_role(role.get("ID"))
+        applications = self.get_applications_for_role(role.get("ID"))
         for app in applications:
             if app.get("Name") == applicant_name:
                 return self.sheets_manager.update_application_status(
@@ -168,27 +176,18 @@ class DataManager:
                 )
         return False
 
-    def set_applicant_elected(self, position: str, applicant_name: str) -> bool:
+    def set_applicant_elected(
+        self, role: ElectionStructureRow, applicant_name: str
+    ) -> bool:
         """Mark an applicant as elected by setting Status="ELECTED"."""
-        role = self.find_role_by_name(position)
-        if not role:
-            return False
 
-        applications = self.sheets_manager.get_applications_for_role(role.get("ID"))
+        applications = self.get_applications_for_role(role.get("ID"))
         for app in applications:
             if app.get("Name") == applicant_name:
                 return self.sheets_manager.update_application_status(
                     role.get("ID"), app.get("Telegram_ID"), status="ELECTED"
                 )
         return False
-
-    def get_existing_application(self, position: str, user_id: int) -> bool:
-        """Check if a user has already applied to a position."""
-        role = self.find_role_by_name(position)
-        if not role:
-            return False
-
-        return self.sheets_manager.get_existing_application(role.get("ID"), user_id)
 
     def approve_application(
         self, role_id: str, telegram_id: int
@@ -238,14 +237,9 @@ class DataManager:
         return self.sheets_manager.get_all_channels()
 
     @property
-    def applications(self) -> List[ApplicationRow]:
-        """Get all applications."""
-        return self.sheets_manager.get_all_applications()
-
-    @property
     def vaalilakana_full(self) -> List[DivisionData]:
         """Get the full election dataset (all roles)."""
-        return self.sheets_manager.get_election_data(True)
+        return self.sheets_manager.get_election_data()
 
     @property
     def vaalilakana(self) -> List[RoleData]:
@@ -254,16 +248,12 @@ class DataManager:
         Returns a dict keyed by Finnish role title with role data including
         denormalized division names for convenience.
         """
-        full_data = self.sheets_manager.get_election_data(False)
+        full_data = self.sheets_manager.get_election_data()
 
         # Flatten all roles from all divisions and filter by elected types
         return [
-            {
-                **role,
-                "division": division.get("division"),
-                "division_en": division.get("division_en"),
-            }
+            role
             for division in full_data
-            for role in division.get("roles", [])
-            if role.get("Type") in {"BOARD", "ELECTED"}
+            for role in division.get("Roles", [])
+            if role.get("Type") in ("BOARD", "ELECTED")
         ]

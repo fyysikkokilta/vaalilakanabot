@@ -109,6 +109,9 @@ async def process_application_queue(
         else:
             logger.warning("Failed to flush channel queue")
 
+        # Invalidate caches after all operations
+        data_manager.sheets_manager.invalidate_caches()
+
     except Exception as e:
         logger.error("Error in queue processing job: %s", e)
 
@@ -201,12 +204,16 @@ async def post_init(app: Application, data_manager: DataManager):
     )
     app.add_handler(
         CommandHandler(
-            "hakemukset", lambda update, _: applications(update, data_manager)
+            "hakemukset",
+            lambda update, _: applications(update, data_manager),
+            filters.ChatType.PRIVATE,
         )
     )
     app.add_handler(
         CommandHandler(
-            "applications", lambda update, _: applications_en(update, data_manager)
+            "applications",
+            lambda update, _: applications_en(update, data_manager),
+            filters.ChatType.PRIVATE,
         )
     )
     app.add_handler(CommandHandler("jauhis", jauhis))
@@ -253,7 +260,7 @@ async def post_init(app: Application, data_manager: DataManager):
         GIVING_EMAIL: [
             MessageHandler(
                 filters.TEXT & (~filters.COMMAND),
-                enter_email,
+                lambda update, ctx: enter_email(update, ctx, data_manager),
             )
         ],
         CONFIRMING_APPLICATION: [

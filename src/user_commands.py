@@ -124,7 +124,7 @@ def _render_applications(roles, app_rows, is_finnish: bool) -> str:
         division_fi = r.get("Division_FI", "")
         division_en = r.get("Division_EN", "")
         fiirumi = app.get("Fiirumi_Post", "")
-        status = map_application_status(app.get("Status", ""), is_finnish)
+        status = map_application_status(app.get("Status", "PENDING"), is_finnish)
 
         # Title
         if is_finnish:
@@ -158,7 +158,7 @@ async def applications_en(update: Update, data_manager: DataManager):
         user_id = update.effective_user.id
 
         # Fetch user's application rows
-        app_rows = data_manager.sheets_manager.get_applications_for_user(user_id)
+        app_rows = data_manager.get_applications_for_user(user_id)
         if not app_rows:
             await update.message.reply_text(
                 get_translation("no_applications", is_finnish=False)
@@ -177,7 +177,7 @@ async def applications(update: Update, data_manager: DataManager):
     try:
         user_id = update.effective_user.id
 
-        app_rows = data_manager.sheets_manager.get_applications_for_user(user_id)
+        app_rows = data_manager.get_applications_for_user(user_id)
         if not app_rows:
             await update.message.reply_text(
                 get_translation("no_applications", is_finnish=True)

@@ -5,7 +5,8 @@ from typing import List
 import requests
 from telegram.ext import ContextTypes
 
-from .sheets_data_manager import DataManager, DivisionData
+from .sheets_data_manager import DataManager
+from .types import DivisionData
 from .config import API_KEY, API_USERNAME, VAALILAKANA_POST_URL
 
 YEAR = datetime.now().year
@@ -18,25 +19,25 @@ def data_to_markdown(data: List[DivisionData]) -> str:
 
     # Iterate over each division
     for division_data in data:
-        division_name = division_data.get("division")
-        division_name_en = division_data.get("division_en")
+        division_name = division_data.get("Division_FI")
+        division_name_en = division_data.get("Division_EN")
 
         # Add division header
         text += f"### {division_name} / {division_name_en}\n\n"
 
         # Iterate over each role in the division
-        for role_data in division_data.get("roles", []):
-            role_title = role_data.get("title")
-            role_title_en = role_data.get("title_en")
-            role_amount = role_data.get("amount")
-            role_application_dl = role_data.get("application_dl")
-            role_applicants = role_data.get("applicants", [])
+        for role_data in division_data.get("Roles", []):
+            role_title = role_data.get("Role_FI")
+            role_title_en = role_data.get("Role_EN")
+            role_amount = role_data.get("Amount")
+            role_application_dl = role_data.get("Deadline")
+            role_applicants = role_data.get("Applicants", [])
             role_tag = None
 
             # Determine if the role is a board role or official role
-            if role_data.get("type") == "BOARD":
+            if role_data.get("Type") == "BOARD":
                 role_tag = "**"
-            elif role_data.get("type") in ("ELECTED", "AUDITOR"):
+            elif role_data.get("Type") in ("ELECTED", "AUDITOR"):
                 role_tag = "*"
 
             role_row = ""

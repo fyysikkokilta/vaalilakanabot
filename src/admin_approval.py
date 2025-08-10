@@ -10,7 +10,7 @@ from .config import ADMIN_CHAT_ID
 from .announcements import announce_to_channels
 from .sheets_data_manager import DataManager
 from .types import ApplicationRow
-from .utils import get_notification_text
+from .utils import get_notification_text, get_role_name
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -18,58 +18,32 @@ logger = logging.getLogger("vaalilakanabot")
 async def send_admin_approval_request(
     context: ContextTypes.DEFAULT_TYPE,
     data_manager: DataManager,
-    application_ref: str,
-    position: str,
     applicant: ApplicationRow,
 ):
     """Send an approval request to admin chat."""
     user_id = applicant.get("Telegram_ID")
 
     # Get division from role data
-    role = data_manager.find_role_by_name(position)
+    role = data_manager.get_role_by_id(applicant.get("Role_ID", ""))
     division = role.get("Division_FI", "") if role else ""
 
     # Check if user already has other elected role applications
-    existing_elected_applications = []
+    existing_applications = data_manager.get_applications_for_user(user_id)
 
-    # Check for approved applications to elected roles (based on role Type)
-    for role_data in data_manager.vaalilakana:
-        if role_data.get("title", "") != position:
-            for app in role_data.get("applicants", []):
-                if (
-                    app.get("Telegram_ID", 0) == user_id
-                    and app.get("Status", "") == "APPROVED"
-                ):
-                    existing_elected_applications.append(
-                        f"✅ {role_data.get('title', '')} (approved)"
-                    )
-
-    # Check for pending applications to elected roles using Applications sheet rows
-    # Build current role id for comparison
-    current_role = data_manager.find_role_by_name(position)
-    current_role_id = current_role.get("ID") if current_role else None
-
-    for app_row in data_manager.applications:
-        if app_row.get("Telegram_ID") != int(user_id) or app_row.get("Status") != "":
-            continue
-
-        role_id = app_row.get("Role_ID")
-        if not role_id or (current_role_id and role_id == current_role_id):
-            continue
-
-        # Resolve role by ID
-        role_row = next(
-            (r for r in data_manager.get_all_roles() if r.get("ID") == role_id),
-            None,
-        )
-        if role_row and role_row.get("Type") in ("BOARD", "ELECTED"):
-            role_title = role_row.get("Role_FI", "")
-            existing_elected_applications.append(f"⏳ {role_title} (pending)")
+    elected_roles = []
+    for application in existing_applications:
+        other_role = data_manager.get_role_by_id(application.get("Role_ID", ""))
+        if (
+            other_role
+            and other_role.get("Type") in ("BOARD", "ELECTED")
+            and other_role.get("ID") != role.get("ID")
+        ):
+            elected_roles.append(other_role.get("Role_EN"))
 
     # Build the admin message
     text = (
         f"🗳️ <b>New application for elected position</b>\n\n"
-        f"<b>Position:</b> {position}\n"
+        f"<b>Position:</b> {role.get('Role_EN')}\n"
         f"<b>Division:</b> {division}\n"
         f"<b>Name:</b> {applicant.get('Name')}\n"
         f"<b>Email:</b> {applicant.get('Email')}\n"
@@ -77,24 +51,22 @@ async def send_admin_approval_request(
     )
 
     # Add warning if user has other elected applications
-    if existing_elected_applications:
+    if elected_roles:
         text += (
             "⚠️ <b>WARNING: Applicant has other elected position applications!</b>\n\n"
             "<b>Other applications:</b>\n"
         )
-        for app in existing_elected_applications:
-            text += f"• {app}\n"
+        for role in elected_roles:
+            text += f"• {role}\n"
 
     text += "Approve application?"
 
+    role_ref = f"{applicant.get('Role_ID')}_{applicant.get('Telegram_ID')}"
+
     keyboard = [
         [
-            InlineKeyboardButton(
-                "✅ Approve", callback_data=f"approve_{application_ref}"
-            ),
-            InlineKeyboardButton(
-                "❌ Reject", callback_data=f"reject_{application_ref}"
-            ),
+            InlineKeyboardButton("✅ Approve", callback_data=f"approve_{role_ref}"),
+            InlineKeyboardButton("❌ Reject", callback_data=f"reject_{role_ref}"),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -106,7 +78,10 @@ async def send_admin_approval_request(
             reply_markup=reply_markup,
             parse_mode="HTML",
         )
-        logger.info("Admin approval request sent for application %s", application_ref)
+        logger.info(
+            "Admin approval request sent for application %s",
+            role_ref,
+        )
     except Exception as e:
         logger.error("Failed to send admin approval request: %s", e)
 
@@ -147,12 +122,12 @@ async def handle_admin_approval(
         return
 
     # Get the applicant row
-    user_apps = data_manager.sheets_manager.get_applications_for_user(telegram_id)
+    user_apps = data_manager.get_applications_for_user(telegram_id)
     application = next(
         (
             a
             for a in user_apps
-            if a.get("Role_ID") == role_id and a.get("Status", "") == ""
+            if a.get("Role_ID") == role_id and a.get("Status", "PENDING") == "PENDING"
         ),
         None,
     )
@@ -162,7 +137,6 @@ async def handle_admin_approval(
         return
 
     name = application.get("Name")
-    position = role_row.get("Role_FI")
     user_id = telegram_id
     language = application.get("Language")
 
@@ -172,7 +146,7 @@ async def handle_admin_approval(
         if approved_app:
             await query.edit_message_text(
                 f"✅ <b>Application approved!</b>\n\n"
-                f"<b>Position:</b> {position}\n"
+                f"<b>Position:</b> {role_row.get("Role_EN")}\n"
                 f"<b>Applicant:</b> {name}\n\n"
                 f"Application has been added to the election sheet and notification sent to channels.",
                 parse_mode="HTML",
@@ -181,7 +155,9 @@ async def handle_admin_approval(
             # Notify the applicant
             try:
                 notification_text = get_notification_text(
-                    "approved", position, language
+                    "approved",
+                    get_role_name(role_row, language != "en"),
+                    language,
                 )
 
                 await context.bot.send_message(
@@ -192,7 +168,7 @@ async def handle_admin_approval(
 
             # Announce to channels
             await announce_to_channels(
-                f"<b>New candidate on election sheet!</b>\n{position}: <i>{name}</i>",
+                f"<b>New candidate on election sheet!</b>\n{role_row.get('Role_EN')}: <i>{name}</i>",
                 context,
                 data_manager,
             )
@@ -207,7 +183,7 @@ async def handle_admin_approval(
         if result:
             await query.edit_message_text(
                 f"❌ <b>Application rejected!</b>\n\n"
-                f"<b>Position:</b> {position}\n"
+                f"<b>Position:</b> {role_row.get('Role_EN')}\n"
                 f"<b>Applicant:</b> {name}\n\n"
                 f"Application has been marked as DENIED.",
                 parse_mode="HTML",
@@ -217,7 +193,11 @@ async def handle_admin_approval(
 
         # Notify the applicant about rejection
         try:
-            notification_text = get_notification_text("rejected", position, language)
+            notification_text = get_notification_text(
+                "rejected",
+                get_role_name(role_row, language != "en"),
+                language,
+            )
 
             await context.bot.send_message(
                 chat_id=user_id, text=notification_text, parse_mode="HTML"
