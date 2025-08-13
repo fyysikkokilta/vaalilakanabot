@@ -321,19 +321,19 @@ async def export_officials_website(update: Update, data_manager: DataManager):
 
         # Process each role from the full dataset, filtering out board roles
         for division_data in data_manager.vaalilakana_full:
-            for role_data in division_data.get("roles", []):
-                if role_data.get("type") == "BOARD":
+            for role_data in division_data.get("Roles", []):
+                if role_data.get("Type") == "BOARD":
                     continue  # Skip board roles
 
                 # Write division and role information
-                division_fi = division_data.get("division")
-                division_en = division_data.get("division_en")
-                role_fi = role_data.get("title")
-                role_en = role_data.get("title_en")
+                division_fi = division_data.get("Division_FI")
+                division_en = division_data.get("Division_EN")
+                role_fi = role_data.get("Role_FI")
+                role_en = role_data.get("Role_EN")
                 output.write(f'"{division_fi}","{division_en}","{role_fi}","{role_en}"')
 
                 # Write applicant names (only elected)
-                for applicant in role_data.get("applicants", []):
+                for applicant in role_data.get("Applicants", []):
                     if applicant.get("Status") == "ELECTED":
                         output.write(f',"{applicant.get("Name")}"')
 
