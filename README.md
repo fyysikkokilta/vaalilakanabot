@@ -147,7 +147,7 @@ The bot uses Google Sheets as the complete data storage solution for all bot dat
 
 ### Google Sheets Structure
 
-The bot creates and manages 5 worksheets in your Google Sheets document:
+The bot creates and manages 3 worksheets in your Google Sheets document:
 
 #### Sheet 1: "Election Structure"
 
@@ -189,7 +189,9 @@ The bot creates and manages 5 worksheets in your Google Sheets document:
 1. Open the Google Sheet
 2. Go to "Election Structure" tab
 3. Add a new row with division and role information
-4. ID will be auto-generated
+   3.1. Type is either BOARD, ELECTED, NON_ELECTED or AUDITOR
+   3.2. Deadline should have the format xx.yy. exactly
+   3.3 ID will be auto-generated
 
 **Managing Applications:**
 
