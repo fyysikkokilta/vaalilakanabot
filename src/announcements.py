@@ -88,17 +88,17 @@ async def parse_fiirumi_posts(
                     if check_title_matches_applicant_and_role(
                         title,
                         applicant.get("Name"),
-                        role_data.get("title"),
-                        role_data.get("title_en"),
+                        role_data.get("Role_FI"),
+                        role_data.get("Role_EN"),
                     ):
                         # Link the post to this applicant (queue the status update)
                         data_manager.set_applicant_fiirumi(
-                            role_data.get("title"),
+                            role_data.get("Role_EN"),
                             applicant.get("Name"),
                             fiirumi_link,
                         )
                         linked_applicants.append(
-                            f"{role_data.get('title')}: {applicant.get('Name')}"
+                            f"{role_data.get('Role_EN')}: {applicant.get('Name')}"
                         )
 
             # Log successful auto-links
