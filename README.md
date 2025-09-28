@@ -36,7 +36,7 @@ This project uses GitHub Actions for continuous integration and deployment:
   - Create a Google Sheets document and share it with the service account email (Editor permissions)
   - Set `GOOGLE_SHEET_URL` in `bot.env` to the full URL of your Google Sheet
 - Create `bot.env` according to the example file `bot.env.example`.
-- Initialize election structure in Google Sheets (optional - can be done manually or from forum post)
+- Initialize election structure in Google Sheets
 - `$ python vaalilakanabot.py`
 - Add the bot to relevant discussion groups.
 
@@ -45,8 +45,13 @@ This project uses GitHub Actions for continuous integration and deployment:
 - Create a Telegram bot and save the bot token.
 - Create Discourse api keys to be used by the bot.
 - Create an admin Telegram group and get the id of the group using, for example, `@RawDataBot`.
-- **Set up Google Sheets** with election structure (see Google Sheets Structure below)
+- Create Discourse areas for the introductions and questions.
+- Create the post for the Election sheet. The post should contain a separate empty message that will be edited by the bot.
+- Create Google service account credentials with access to Google Sheets API for the bot to use and export the credentials as `google_credentials.json`.
 - Create `bot.env` according to the example file `bot.env.example`.
+- Run the bot to populate the Google Sheets document.
+- Add the election sheet data to the generated Sheets. IDs are generated automatically so don't touch those!
+- Start the jauhistelu.
 
 ### Docker Deployment Options
 
