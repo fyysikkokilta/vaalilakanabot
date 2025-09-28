@@ -93,7 +93,7 @@ async def parse_fiirumi_posts(
                     ):
                         # Link the post to this applicant (queue the status update)
                         data_manager.set_applicant_fiirumi(
-                            role_data.get("Role_EN"),
+                            role_data,
                             applicant.get("Name"),
                             fiirumi_link,
                         )
