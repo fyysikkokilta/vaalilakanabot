@@ -260,46 +260,46 @@ async def add_elected_tag(
         )
 
         # Find the user's Telegram ID to send them a notification
-        if role:
-            applications = data_manager.get_applications_for_role(role.get("ID"))
-            for app in applications:
-                if app.get("Name") == name:
-                    user_id = app.get("Telegram_ID")
-                    language = app.get("Language", "en")
+        # if role:
+        #    applications = data_manager.get_applications_for_role(role.get("ID"))
+        #    for app in applications:
+        #        if app.get("Name") == name:
+        #            user_id = app.get("Telegram_ID")
+        #            language = app.get("Language", "en")
 
-                    # Send notification to the elected user
-                    try:
-                        notification_text = get_notification_text(
-                            "elected",
-                            get_role_name(role, language != "en"),
-                            language,
-                        )
+        #            # Send notification to the elected user
+        #            try:
+        #                notification_text = get_notification_text(
+        #                    "elected",
+        #                    get_role_name(role, language != "en"),
+        #                    language,
+        #                )
 
-                        await context.bot.send_message(
-                            chat_id=user_id, text=notification_text, parse_mode="HTML"
-                        )
-                        logger.info(
-                            "Election notification sent to user %s for position %s",
-                            user_id,
-                            role.get("Role_EN"),
-                        )
-                    except Exception as e:
-                        logger.error("Failed to notify elected user %s: %s", user_id, e)
-                    break
+        #                await context.bot.send_message(
+        #                    chat_id=user_id, text=notification_text, parse_mode="HTML"
+        #                )
+        #                logger.info(
+        #                    "Election notification sent to user %s for position %s",
+        #                    user_id,
+        #                    role.get("Role_EN"),
+        #                )
+        #            except Exception as e:
+        #                logger.error("Failed to notify elected user %s: %s", user_id, e)
+        #                    break
 
-            # Send announcement to channels for BOARD and ELECTED roles
-            role_type = role.get("Type")
-            if role_type in ("BOARD", "ELECTED"):
-                await announce_to_channels(
-                    f"🎉 <i>{name}</i> elected for <b>{role.get("Role_EN")}</b>",
-                    context,
-                    data_manager,
-                )
-                logger.info(
-                    "Election announcement sent to channels for %s: %s",
-                    role.get("Role_EN"),
-                    name,
-                )
+        # Send announcement to channels for BOARD and ELECTED roles
+        #    role_type = role.get("Type")
+        #    if role_type in ("BOARD", "ELECTED"):
+        #        await announce_to_channels(
+        #            f"🎉 <i>{name}</i> elected for <b>{role.get("Role_EN")}</b>",
+        #            context,
+        #            data_manager,
+        #        )
+        #        logger.info(
+        #            "Election announcement sent to channels for %s: %s",
+        #            role.get("Role_EN"),
+        #            name,
+        #        )
 
         logger.info(
             "Applicant %s elected for position %s by admin",
