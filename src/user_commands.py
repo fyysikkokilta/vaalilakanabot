@@ -26,7 +26,7 @@ async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • /start - Register channel for announcements
 • /stop - Unregister channel for announcements
 • /sheet - Show current election sheet
-• /applications - Show your applications
+• /applications - Show your applications (send in private chat)
 • /apply - Apply for a position (send in private chat)
 
 <b>Fun Commands:</b>
@@ -36,9 +36,15 @@ async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • /lauh - Send lauh sticker
 • /mauh - Send mauh sticker
 
-<b>Additional Information:</b>
-• Election sheet updates automatically
-• Applications for elected positions require admin approval
+<b>Applying (through private message):</b>
+1) The applications are connected to your telegram user, so only apply using your own device.
+2) Official roles are organized in divisions. If you are not sure which division an official role belongs to, you can look for it in the physical sheet in the guild room or online at Fiirumi in the "vaalilakana" section.
+3) After this, start off by using the command /apply and follow the bot's guidance. You can check your information before submitting the application.
+4) If you are applying for an elected role, remember to post an introduction at Fiirumi.
+
+<b>After applying (through private message):</b>
+• You can check your application with command /applications
+• If you want to cancel your application, contact the board.
 
 <b>Finnish help:</b> /apua
 
@@ -60,7 +66,7 @@ async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • /start - Rekisteröi kanavan tiedotuskanavaksi
 • /stop - Poista kanava tiedotuskanavista
 • /lakana - Näytä nykyinen vaalilakana
-• /hakemukset - Näytä omat hakemuksesi
+• /hakemukset - Näytä omat hakemuksesi (lähetä yksityisviestinä)
 • /hae - Hae virkaan (lähetä yksityisviestinä)
 
 <b>Hauskat komennot:</b>
@@ -70,9 +76,15 @@ async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • /lauh - Lähetä lauh-tarra
 • /mauh - Lähetä mauh-tarra
 
-<b>Lisätietoja:</b>
-• Vaalilakana päivittyy automaattisesti
-• Vaaleilla valittujen roolien hakemukset vaativat ylläpidon hyväksynnän
+<b>Hakeminen (yksityisviestillä):</b>
+1) Hakemukset yhdistetään hakijan telegramkäyttäjään, joten hakekaa ainoastaan omalla laitteella.
+2) Toimariroolit on jaettu jaoksittain. Mikäli et ole varma, missä jaoksessa haluamasi toimarirooli on, voit etsiä sen kiltiksen fyysisestä vaalilakanasta tai Fiirumilta vaalilakanaosiosta.
+3) Tämän jälkeen aloita hakeminen komennolla /hae ja seuraa botin ohjeita. Lopuksi voi vielä varmistaa tiedot ennen hakemuksen lähettämistä.
+4) Mikäli haet vaaleilla valittavaan rooliin, muista hakemisen jälkeen tehdä esittelyteksti Fiirumilla.
+
+<b>Hakemisen jälkeen (yksityisviestillä):</b>
+• Voit tarkistaa omat hakemuksesi komennolla /hakemukset
+• Mikäli haluat peruuttaa hakemuksen, ota yhteyttä raatiin.
 
 <b>English help:</b> /help
 
