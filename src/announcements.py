@@ -1,6 +1,5 @@
 """Announcement and notification functionality."""
 
-import time
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -37,7 +36,6 @@ async def announce_to_channels(
             await context.bot.send_message(
                 channel.get("Channel_ID"), message, parse_mode="HTML"
             )
-            time.sleep(0.5)
         except Exception as e:
             logger.error(e)
             data_manager.remove_channel(channel.get("Channel_ID"))
