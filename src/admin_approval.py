@@ -168,7 +168,10 @@ async def handle_admin_approval(
 
             # Announce to channels
             await announce_to_channels(
-                f"<b>New candidate on election sheet!</b>\n{role_row.get('Role_EN')}: <i>{name}</i>",
+                f"<b>Uusi nimi vaalilakanassa!</b>\n"
+                f"<b>New candidate on the election sheet!</b>\n"
+                f"<b>{role_row.get('Role_FI')} / {role_row.get('Role_EN')}:</b>\n"
+                f"<i>{name}</i>",
                 context,
                 data_manager,
             )

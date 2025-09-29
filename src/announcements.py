@@ -108,7 +108,9 @@ async def parse_fiirumi_posts(
                 )
 
             await announce_to_channels(
-                f"<b>New post on Vaalipeli forum!</b>\n{title}\n{fiirumi_link}",
+                f"<b>Uusi postaus Fiirumilla!</b>\n"
+                f"<b>New post on Fiirumi!</b>\n"
+                f"<a href=\"{fiirumi_link}\">{title}</a>",
                 context,
                 data_manager,
             )
@@ -123,7 +125,9 @@ async def parse_fiirumi_posts(
             logger.info("Found new question: %s (ID: %s)", title, t_id)
 
             await announce_to_channels(
-                f"<b>New question on Fiirumi!</b>\n{title}\n{create_fiirumi_link(t_id)}",
+                f"<b>Uusi kysymys Fiirumilla!</b>\n"
+                f"<b>New question on Fiirumi!</b>\n"
+                f"<a href=\"{create_fiirumi_link(t_id)}\">{title}</a>",
                 context,
                 data_manager,
             )
@@ -169,12 +173,12 @@ async def announce_new_responses(
 
         # If there are new responses, create a single grouped message
         if new_responses:
-            message = "<b>New responses on Fiirumi!</b>\n\n"
+            message = "<b>Uusia vastauksia Fiirumilla!</b>\n"
+            message += "<b>New responses on Fiirumi!</b>\n\n"
 
             for response in new_responses:
-                message += f"• <b>{response['title']}</b>\n"
-                message += f"  {create_fiirumi_link(response['t_id'])}/{response['posts_count']}\n"
-                message += f"  Latest poster: {response['last_poster']}\n\n"
+                message += f"• <a href=\"{create_fiirumi_link(response['t_id'])}/{response['posts_count']}\">{response['title']}</a>\n"
+                message += f"  Viimeisin vastaaja / Latest poster: {response['last_poster']}\n\n"
 
             await announce_to_channels(message, context, data_manager)
             logger.info(
