@@ -594,7 +594,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         try:
             all_data = self.channels_sheet.get_all_records()
             return [
-                ChannelRow(Channel_ID=int(record.get("Chat_ID"))) for record in all_data
+                ChannelRow(Channel_ID=int(str(record.get("Chat_ID", "")).replace("−", "-"))) for record in all_data
             ]
         except Exception as e:
             logger.error("Error getting channels: %s", e)
