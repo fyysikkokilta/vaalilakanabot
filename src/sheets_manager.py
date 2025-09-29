@@ -593,9 +593,12 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         """Get all registered channels."""
         try:
             all_data = self.channels_sheet.get_all_records()
-            return [
-                ChannelRow(Channel_ID=int(str(record.get("Chat_ID", "")).replace("−", "-"))) for record in all_data
-            ]
+            # Get distinct channel IDs
+            unique_ids = {
+                int(str(record.get("Chat_ID", "")).replace("−", "-"))
+                for record in all_data
+            }
+            return [ChannelRow(Channel_ID=chat_id) for chat_id in unique_ids]
         except Exception as e:
             logger.error("Error getting channels: %s", e)
             return []
