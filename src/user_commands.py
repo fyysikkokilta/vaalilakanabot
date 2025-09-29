@@ -35,6 +35,7 @@ async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • /jauho - Send jauho sticker
 • /lauh - Send lauh sticker
 • /mauh - Send mauh sticker
+• /yauh - Send yauh sticker
 
 <b>Applying (through private message):</b>
 1) The applications are connected to your telegram user, so only apply using your own device.
@@ -75,6 +76,7 @@ async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • /jauho - Lähetä jauho-tarra
 • /lauh - Lähetä lauh-tarra
 • /mauh - Lähetä mauh-tarra
+• /yauh - Lähetä yauh-tarra
 
 <b>Hakeminen (yksityisviestillä):</b>
 1) Hakemukset yhdistetään hakijan telegramkäyttäjään, joten hakekaa ainoastaan omalla laitteella.
@@ -250,3 +252,8 @@ async def lauh(update: Update, _: ContextTypes.DEFAULT_TYPE):
 async def mauh(update: Update, _: ContextTypes.DEFAULT_TYPE):
     """Send mauh sticker."""
     await send_sticker(update, "mauh")
+
+
+async def yauh(update: Update, _: ContextTypes.DEFAULT_TYPE):
+    """Send yauh sticker."""
+    await send_sticker(update, "yauh")

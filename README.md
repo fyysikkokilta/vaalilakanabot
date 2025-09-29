@@ -95,6 +95,7 @@ docker-compose -f docker-compose.prod.yml up
 - `/jauho` - Send jauho sticker
 - `/lauh` - Send lauh sticker
 - `/mauh` - Send mauh sticker
+- `/yauh` - Send yauh sticker
 
 ### Admin Commands (Admin Chat Only)
 

@@ -44,6 +44,7 @@ from .user_commands import (
     jauho,
     lauh,
     mauh,
+    yauh,
     help_command,
     apua_command,
 )
@@ -221,6 +222,7 @@ async def post_init(app: Application, data_manager: DataManager):
     app.add_handler(CommandHandler("jauho", jauho))
     app.add_handler(CommandHandler("lauh", lauh))
     app.add_handler(CommandHandler("mauh", mauh))
+    app.add_handler(CommandHandler("yauh", yauh))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("apua", apua_command))
 
