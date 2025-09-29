@@ -108,7 +108,7 @@ async def handle_admin_approval(
     # application_ref is ROLE_ID_TELEGRAMID
     try:
         role_id, telegram_id_str = application_ref.rsplit("_", 1)
-        telegram_id = int(telegram_id_str)
+        telegram_id = int(str(telegram_id_str).replace("−", "-"))
     except Exception:
         await query.edit_message_text("❌ Invalid approval reference.")
         return

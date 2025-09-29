@@ -515,7 +515,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 # Find rows to delete (collect indices in reverse order)
                 rows_to_delete = []
                 for i, row in enumerate(all_data[1:], start=2):  # Start from row 2
-                    if len(row) > 0 and int(row[0]) in channels_to_remove:
+                    if len(row) > 0 and int(str(row[0]).replace("−", "-")) in channels_to_remove:
                         rows_to_delete.append(i)
 
                 # Delete rows in reverse order to maintain correct indices
