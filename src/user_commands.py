@@ -102,7 +102,7 @@ async def register_channel(update: Update, data_manager: DataManager):
         chat_id = update.message.chat.id
         data_manager.add_channel(chat_id)
         await update.message.reply_text(
-            "Rekisteröity Vaalilakanabotin tiedotuskanavaksi!"
+            "Registered as Vaalilakanabot announcement channel!"
         )
     except Exception as e:
         logger.error(e)
@@ -115,11 +115,11 @@ async def unregister_channel(update: Update, data_manager: DataManager):
         removed = data_manager.remove_channel(chat_id)
         if removed:
             await update.message.reply_text(
-                "Kanava poistettu Vaalilakanabotin tiedotuskanavasta!"
+                "Channel removed from Vaalilakanabot announcement channels!"
             )
         else:
             await update.message.reply_text(
-                "Kanavaa ei löytynyt rekisteröitynä tiedotuskanavaksi."
+                "Channel not found in registered announcement channels."
             )
     except Exception as e:
         logger.error(e)
