@@ -84,7 +84,7 @@ async def parse_fiirumi_posts(
 
             # Check all elected roles for updates using flattened structure
             for role_data in data_manager.vaalilakana:
-                for applicant in role_data.get("applicants", []):
+                for applicant in role_data.get("Applicants", []):
                     if check_title_matches_applicant_and_role(
                         title,
                         applicant.get("Name"),
