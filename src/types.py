@@ -45,6 +45,7 @@ class DivisionDict(TypedDict):
 class RoleData(TypedDict):
     """Role data dictionary."""
 
+    ID: str
     Role_FI: str
     Role_EN: str
     Amount: Optional[str]

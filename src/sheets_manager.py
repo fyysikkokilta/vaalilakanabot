@@ -568,6 +568,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 role_data["Applicants"] = applicants
                 divisions_dict[Division_FI]["Roles"].append(
                     RoleData(
+                        ID=role_data.get("ID"),
                         Role_FI=role_data.get("Role_FI"),
                         Role_EN=role_data.get("Role_EN"),
                         Amount=role_data.get("Amount"),
