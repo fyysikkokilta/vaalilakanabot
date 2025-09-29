@@ -254,8 +254,10 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                         and app.get("Telegram_ID") == status_update.get("Telegram_ID")
                         and app.get("Status") not in ("DENIED", "REMOVED")
                     ):
-                        app["Status"] = status_update.get("Status")
-                        app["Fiirumi_Post"] = status_update.get("Fiirumi_Post")
+                        if status_update.get("Status") is not None:
+                            app["Status"] = status_update.get("Status")
+                        if status_update.get("Fiirumi_Post") is not None:
+                            app["Fiirumi_Post"] = status_update.get("Fiirumi_Post")
                         break
 
             return all_applications
