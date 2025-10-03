@@ -8,9 +8,20 @@ from telegram.ext import ContextTypes
 
 from .utils import check_title_matches_applicant_and_role, create_fiirumi_link
 from .sheets_data_manager import DataManager
-from .config import TOPIC_LIST_URL, QUESTION_LIST_URL
+from .config import TOPIC_LIST_URL, QUESTION_LIST_URL, API_KEY, API_USERNAME
 
 logger = logging.getLogger("vaalilakanabot")
+
+
+def get_fiirumi_data(url: str):
+    # Without headers, the request will fetch cached data
+    # This in turn causes the bot to not announce new posts and questions
+    headers = {
+        "Api-Key": API_KEY,
+        "Api-Username": API_USERNAME,
+    }
+    response = requests.get(url, headers=headers, timeout=10)
+    return response.json()
 
 
 def is_recent_timestamp(
@@ -50,12 +61,10 @@ async def parse_fiirumi_posts(
 
     try:
         current_time = datetime.now(timezone.utc)
-        page_fiirumi = requests.get(TOPIC_LIST_URL, timeout=10)
-        page_question = requests.get(QUESTION_LIST_URL, timeout=10)
-        topic_list_raw = page_fiirumi.json()
-        question_list_raw = page_question.json()
-        topic_list = topic_list_raw["topic_list"]["topics"]
-        question_list = question_list_raw["topic_list"]["topics"]
+        topic_json = get_fiirumi_data(TOPIC_LIST_URL)
+        question_json = get_fiirumi_data(QUESTION_LIST_URL)
+        topic_list = topic_json["topic_list"]["topics"]
+        question_list = question_json["topic_list"]["topics"]
 
         logger.debug(
             "Retrieved %d topics and %d questions", len(topic_list), len(question_list)
@@ -140,9 +149,8 @@ async def announce_new_responses(
 
     try:
         current_time = datetime.now(timezone.utc)
-        page_question = requests.get(QUESTION_LIST_URL, timeout=10)
-        question_list_raw = page_question.json()
-        question_list = question_list_raw["topic_list"]["topics"]
+        question_json = get_fiirumi_data(QUESTION_LIST_URL)
+        question_list = question_json["topic_list"]["topics"]
 
         new_responses = []
 
