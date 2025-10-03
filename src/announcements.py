@@ -13,6 +13,12 @@ from .config import TOPIC_LIST_URL, QUESTION_LIST_URL, API_KEY, API_USERNAME
 logger = logging.getLogger("vaalilakanabot")
 
 
+def get_current_minute_start() -> datetime:
+    """Get the current time rounded down to the start of the ongoing minute."""
+    now = datetime.now(timezone.utc)
+    return now.replace(second=0, microsecond=0)
+
+
 def get_fiirumi_data(url: str):
     # Without headers, the request will fetch cached data
     # This in turn causes the bot to not announce new posts and questions
@@ -60,7 +66,7 @@ async def parse_fiirumi_posts(
     """Parse and announce new fiirumi posts and questions based on timestamps."""
 
     try:
-        current_time = datetime.now(timezone.utc)
+        current_time = get_current_minute_start()
         topic_json = get_fiirumi_data(TOPIC_LIST_URL)
         question_json = get_fiirumi_data(QUESTION_LIST_URL)
         topic_list = topic_json["topic_list"]["topics"]
@@ -148,7 +154,7 @@ async def announce_new_responses(
     """Announce new responses to questions based on timestamps, runs every hour."""
 
     try:
-        current_time = datetime.now(timezone.utc)
+        current_time = get_current_minute_start()
         question_json = get_fiirumi_data(QUESTION_LIST_URL)
         question_list = question_json["topic_list"]["topics"]
 
