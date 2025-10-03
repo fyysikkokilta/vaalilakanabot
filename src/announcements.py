@@ -13,12 +13,13 @@ from .config import TOPIC_LIST_URL, QUESTION_LIST_URL
 logger = logging.getLogger("vaalilakanabot")
 
 
-def is_recent_timestamp(timestamp_str: str, minutes: int = 1) -> bool:
+def is_recent_timestamp(
+    timestamp_str: str, current_time: datetime, minutes: int = 1
+) -> bool:
     """Check if a timestamp is within the last N minutes."""
     try:
         # Parse the timestamp (assume ISO format from Discourse)
         post_time = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        current_time = datetime.now(timezone.utc)
         time_diff = current_time - post_time
 
         return time_diff <= timedelta(minutes=minutes)
@@ -48,6 +49,7 @@ async def parse_fiirumi_posts(
     """Parse and announce new fiirumi posts and questions based on timestamps."""
 
     try:
+        current_time = datetime.now(timezone.utc)
         page_fiirumi = requests.get(TOPIC_LIST_URL, timeout=10)
         page_question = requests.get(QUESTION_LIST_URL, timeout=10)
         topic_list_raw = page_fiirumi.json()
@@ -73,7 +75,7 @@ async def parse_fiirumi_posts(
         title = topic["title"]
         created_at = topic.get("created_at")
 
-        if created_at and is_recent_timestamp(created_at):
+        if created_at and is_recent_timestamp(created_at, current_time):
             logger.info("Found new post: %s (ID: %s)", title, t_id)
 
             # Try to automatically link this post to an applicant
@@ -108,7 +110,7 @@ async def parse_fiirumi_posts(
             await announce_to_channels(
                 f"<b>Uusi postaus Fiirumilla!</b>\n"
                 f"<b>New post on Fiirumi!</b>\n"
-                f"<a href=\"{fiirumi_link}\">{title}</a>",
+                f'<a href="{fiirumi_link}">{title}</a>',
                 context,
                 data_manager,
             )
@@ -119,13 +121,13 @@ async def parse_fiirumi_posts(
         title = question["title"]
         created_at = question.get("created_at")
 
-        if created_at and is_recent_timestamp(created_at):
+        if created_at and is_recent_timestamp(created_at, current_time):
             logger.info("Found new question: %s (ID: %s)", title, t_id)
 
             await announce_to_channels(
                 f"<b>Uusi kysymys Fiirumilla!</b>\n"
                 f"<b>New question on Fiirumi!</b>\n"
-                f"<a href=\"{create_fiirumi_link(t_id)}\">{title}</a>",
+                f'<a href="{create_fiirumi_link(t_id)}">{title}</a>',
                 context,
                 data_manager,
             )
@@ -137,6 +139,7 @@ async def announce_new_responses(
     """Announce new responses to questions based on timestamps, runs every hour."""
 
     try:
+        current_time = datetime.now(timezone.utc)
         page_question = requests.get(QUESTION_LIST_URL, timeout=10)
         question_list_raw = page_question.json()
         question_list = question_list_raw["topic_list"]["topics"]
@@ -153,7 +156,7 @@ async def announce_new_responses(
             # and it's not a brand new question (posts_count > 1 means responses exist)
             if (
                 last_posted_at
-                and is_recent_timestamp(last_posted_at, minutes=60)
+                and is_recent_timestamp(last_posted_at, current_time, minutes=60)
                 and posts_count > 1
             ):  # More than just the original question
 
