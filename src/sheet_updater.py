@@ -43,7 +43,12 @@ def data_to_markdown(data: List[DivisionData]) -> str:
             role_row = ""
             if role_tag:
                 role_row += role_tag
-            role_row += f"{role_title} / {role_title_en}"
+            if role_title != role_title_en and role_title and role_title_en:
+                role_row += f"{role_title} / {role_title_en}"
+            elif role_title:
+                role_row += f"{role_title}"
+            else:
+                role_row += f"{role_title_en}"
             if role_amount:
                 role_row += f" ({role_amount})"
             if role_application_dl:
