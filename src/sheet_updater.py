@@ -63,10 +63,21 @@ def data_to_markdown(data: List[DivisionData]) -> str:
                 text += "\n"
                 for applicant in role_applicants:
                     applicant_name = applicant.get("Name")
-                    if applicant.get("Status") == "ELECTED":
-                        text += f"* **{applicant_name}**\n"
+                    fiirumi_post = applicant.get("Fiirumi_Post", "")
+                    status = applicant.get("Status", "")
+
+                    applicant_row = "* "
+
+                    if status == "ELECTED":
+                        applicant_row += "**"
+                    if fiirumi_post:
+                        applicant_row += f"[{applicant_name}]({fiirumi_post})"
                     else:
-                        text += f"* {applicant_name}\n"
+                        applicant_row += f"{applicant_name}"
+                    if status == "ELECTED":
+                        applicant_row += "**"
+                    applicant_row += "\n"
+                    text += applicant_row
                 text += "\n"
 
             text += "\n"
