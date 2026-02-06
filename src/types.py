@@ -7,6 +7,19 @@ RoleType = Literal["BOARD", "ELECTED", "NON-ELECTED", "AUDITOR"]
 ApplicationStatus = Literal["APPROVED", "DENIED", "REMOVED", "ELECTED", "PENDING"]
 
 
+class UserRow(TypedDict):
+    """Row in the users sheet."""
+
+    Telegram_ID: int
+    Name: str
+    Email: str
+    Telegram: str  # @username
+    Show_Name_Consent: bool  # Consent to show name on website
+    Show_Image_Consent: bool  # Consent to show image on website
+    Show_Telegram_Consent: bool  # Consent to show Telegram handle on website
+    Updated_At: str  # ISO timestamp of last update
+
+
 class ElectionStructureRow(TypedDict):
     """Row in the election structure sheet."""
 
@@ -21,7 +34,11 @@ class ElectionStructureRow(TypedDict):
 
 
 class ApplicationRow(TypedDict):
-    """Row in the applications sheet."""
+    """Row in the applications sheet.
+
+    Note: Name, Email, Telegram fields are kept for backward compatibility
+    but should reference UserRow data when Users sheet is in use.
+    """
 
     Timestamp: str
     Role_ID: str
@@ -32,6 +49,7 @@ class ApplicationRow(TypedDict):
     Fiirumi_Post: str
     Status: ApplicationStatus
     Language: str
+    Group_ID: Optional[str]  # UUID linking group applications together
 
 
 class DivisionDict(TypedDict):

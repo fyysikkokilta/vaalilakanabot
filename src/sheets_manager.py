@@ -19,6 +19,7 @@ from .types import (
     ElectionStructureRow,
     DivisionDict,
     RoleData,
+    UserRow,
 )
 
 from .config import GOOGLE_SHEET_URL, GOOGLE_CREDENTIALS_FILE
@@ -29,11 +30,13 @@ logger = logging.getLogger("vaalilakanabot")
 _roles_cache = TTLCache(maxsize=1, ttl=300)
 _applications_cache = TTLCache(maxsize=1, ttl=300)
 _channels_cache = TTLCache(maxsize=1, ttl=300)
+_users_cache = TTLCache(maxsize=1, ttl=300)
 
 # Persistent storage for last known good values
 _last_known_roles: Optional[List[ElectionStructureRow]] = None
 _last_known_applications: Optional[List[ApplicationRow]] = None
 _last_known_channels: Optional[List[ChannelRow]] = None
+_last_known_users: Optional[List[UserRow]] = None
 
 T = TypeVar('T')
 
@@ -121,6 +124,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         self.election_sheet = None
         self.applications_sheet = None
         self.channels_sheet = None
+        self.users_sheet = None
 
         # Application queue for batching
         self.application_queue: deque[ApplicationRow] = deque()
@@ -131,6 +135,9 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         # Channel operation queues for batching
         self.channel_add_queue: deque[int] = deque()
         self.channel_remove_queue: deque[int] = deque()
+
+        # User operation queues for batching
+        self.user_upsert_queue: deque[UserRow] = deque()
 
         self._connect()
 
@@ -186,7 +193,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             self.applications_sheet = self.spreadsheet.worksheet("Applications")
         except gspread.WorksheetNotFound:
             self.applications_sheet = self.spreadsheet.add_worksheet(
-                title="Applications", rows=1000, cols=9
+                title="Applications", rows=1000, cols=10
             )
             # Add headers
             headers = [
@@ -199,8 +206,9 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 "Fiirumi_Post",
                 "Status",
                 "Language",
+                "Group_ID",
             ]
-            self.applications_sheet.update("A1:I1", [headers])
+            self.applications_sheet.update("A1:J1", [headers])
 
         # Get or create Channels sheet
         try:
@@ -213,11 +221,32 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             headers = ["Chat_ID", "Added_Date"]
             self.channels_sheet.update("A1:B1", [headers])
 
+        # Get or create Users sheet
+        try:
+            self.users_sheet = self.spreadsheet.worksheet("Users")
+        except gspread.WorksheetNotFound:
+            self.users_sheet = self.spreadsheet.add_worksheet(
+                title="Users", rows=1000, cols=8
+            )
+            # Add headers
+            headers = [
+                "Telegram_ID",
+                "Name",
+                "Email",
+                "Telegram",
+                "Show_Name_Consent",
+                "Show_Image_Consent",
+                "Show_Telegram_Consent",
+                "Updated_At",
+            ]
+            self.users_sheet.update("A1:H1", [headers])
+
     def invalidate_caches(self):
         """Invalidate all caches."""
         _roles_cache.clear()
         _applications_cache.clear()
         _channels_cache.clear()
+        _users_cache.clear()
 
     @retry_on_api_error(max_retries=3, backoff_factor=2.0)
     def _get_all_values_with_retry(self, worksheet) -> List[List[Any]]:
@@ -447,12 +476,13 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     app.get("Fiirumi_Post"),
                     app.get("Status"),
                     app.get("Language"),
+                    app.get("Group_ID", ""),
                 ]
                 batch_data.append(row_data)
 
             # Calculate the range for batch update
             end_row = start_row + len(batch_data) - 1
-            range_str = f"A{start_row}:I{end_row}"
+            range_str = f"A{start_row}:J{end_row}"
 
             # Perform batch update with retry
             self._update_with_retry(self.applications_sheet, range_str, batch_data)
@@ -804,4 +834,147 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
         except Exception as e:
             logger.error("Error queueing channel removal: %s", e)
+            return False
+
+    # User management methods
+    @cached(cache=_users_cache)
+    def get_all_users(self) -> List[UserRow]:
+        """Get all registered users."""
+        global _last_known_users
+
+        try:
+            all_data = self._get_all_records_with_retry(self.users_sheet)
+            result = []
+            for record in all_data:
+                user = UserRow(
+                    Telegram_ID=int(record.get("Telegram_ID", 0)),
+                    Name=record.get("Name", ""),
+                    Email=record.get("Email", ""),
+                    Telegram=record.get("Telegram", ""),
+                    Show_Name_Consent=record.get("Show_Name_Consent", "FALSE") == "TRUE",
+                    Show_Image_Consent=record.get("Show_Image_Consent", "FALSE") == "TRUE",
+                    Show_Telegram_Consent=record.get("Show_Telegram_Consent", "FALSE") == "TRUE",
+                    Updated_At=record.get("Updated_At", ""),
+                )
+                result.append(user)
+
+            # Persist last known good value
+            _last_known_users = result
+
+            return result
+        except Exception as e:
+            logger.error("Error getting users: %s", e)
+            # Return last known good value if available
+            if _last_known_users:
+                logger.warning("Returning last known users due to error")
+                return _last_known_users
+            return []
+
+    def get_user_by_telegram_id(self, telegram_id: int) -> Optional[UserRow]:
+        """Get a user by Telegram ID."""
+        all_users = self.get_all_users()
+        return next((user for user in all_users if user.get("Telegram_ID") == telegram_id), None)
+
+    def upsert_user(self, user: UserRow) -> bool:
+        """Queue a user to be added or updated."""
+        try:
+            telegram_id = user.get("Telegram_ID")
+
+            # Check if already queued
+            for queued_user in self.user_upsert_queue:
+                if queued_user.get("Telegram_ID") == telegram_id:
+                    # Update the existing queue entry
+                    queued_user.update(user)
+                    logger.info("Updated queued user info for user %s", telegram_id)
+                    return True
+
+            # Add to queue
+            self.user_upsert_queue.append(user)
+            logger.info("Queued user info for user %s", telegram_id)
+            return True
+
+        except Exception as e:
+            logger.error("Error queueing user upsert: %s", e)
+            return False
+
+    def flush_user_queue(self) -> bool:
+        """Flush all queued user operations to Google Sheets."""
+        users_to_process = []
+
+        try:
+            if not self.user_upsert_queue:
+                logger.debug("No users in queue to flush")
+                return True
+
+            # Convert queue to list and clear queue
+            users_to_process = list(self.user_upsert_queue)
+            self.user_upsert_queue.clear()
+
+            # Get current sheet data
+            all_data = self._get_all_values_with_retry(self.users_sheet)
+            headers = all_data[0]
+
+            # Find column indices
+            telegram_id_col = headers.index("Telegram_ID") + 1
+
+            # Prepare batch updates and additions
+            batch_updates = []
+            new_users = []
+
+            for user in users_to_process:
+                telegram_id = user.get("Telegram_ID")
+
+                # Find if user exists
+                user_row_index = None
+                for i, row in enumerate(all_data[1:], start=2):
+                    if (
+                        len(row) > telegram_id_col - 1
+                        and str(row[telegram_id_col - 1]) == str(telegram_id)
+                    ):
+                        user_row_index = i
+                        break
+
+                user_data = [
+                    user.get("Telegram_ID"),
+                    user.get("Name"),
+                    user.get("Email"),
+                    user.get("Telegram"),
+                    "TRUE" if user.get("Show_Name_Consent") else "FALSE",
+                    "TRUE" if user.get("Show_Image_Consent") else "FALSE",
+                    "TRUE" if user.get("Show_Telegram_Consent") else "FALSE",
+                    user.get("Updated_At"),
+                ]
+
+                if user_row_index:
+                    # Update existing user
+                    batch_updates.append(
+                        {
+                            "range": f"A{user_row_index}:H{user_row_index}",
+                            "values": [user_data],
+                        }
+                    )
+                else:
+                    # New user
+                    new_users.append(user_data)
+
+            # Perform batch update for existing users
+            if batch_updates:
+                self._batch_update_with_retry(self.users_sheet, batch_updates)
+                logger.info("Updated %d existing users", len(batch_updates))
+
+            # Add new users
+            if new_users:
+                start_row = len(all_data) + 1
+                end_row = start_row + len(new_users) - 1
+                range_str = f"A{start_row}:H{end_row}"
+                self._update_with_retry(self.users_sheet, range_str, new_users)
+                logger.info("Added %d new users", len(new_users))
+
+            return True
+
+        except Exception as e:
+            logger.error("Error flushing user queue: %s", e)
+            # Re-queue the users if they failed to flush
+            for user in users_to_process:
+                self.user_upsert_queue.append(user)
             return False

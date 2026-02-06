@@ -89,9 +89,16 @@ async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def process_application_queue(
     _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ):
-    """Flush queued applications, status updates, and channel operations to Google Sheets."""
+    """Flush queued applications, status updates, channel operations, and user operations to Google Sheets."""
     try:
-        # First flush new applications
+        # First flush user operations (users should exist before applications reference them)
+        user_success = data_manager.sheets_manager.flush_user_queue()
+        if user_success:
+            logger.debug("Successfully flushed user queue")
+        else:
+            logger.warning("Failed to flush user queue")
+
+        # Then flush new applications
         app_success = data_manager.sheets_manager.flush_application_queue()
         if app_success:
             logger.debug("Successfully flushed application queue")
