@@ -122,8 +122,27 @@ Environment variables are loaded from `bot.env` (see `bot.env.example`):
 - **TOPIC_LIST_URL** - Discourse category JSON for introductions
 - **QUESTION_LIST_URL** - Discourse category JSON for questions
 - **VAALILAKANA_POST_URL** - Discourse post to update with election sheet
+- **ELECTION_YEAR** (optional) - Target year for automatic Discourse area generation
 
 Google credentials must be in `google_credentials.json` at project root (gitignored).
+
+## Automatic Fiirumi Area Generation
+
+The bot can automatically create Discourse categories for elections when `ELECTION_YEAR` is set and matches the current year.
+
+**Module**: `src/fiirumi_area_generator.py`
+
+**Generated structure**:
+- Parent category: `vaalipeli-{year}` (e.g., "Vaalipeli 2025")
+- Subcategory: `esittelyt` (Introductions)
+- Subcategory: `kysymykset` (Questions)
+
+**Behavior**:
+- Runs once during bot initialization in `post_init()`
+- Checks if categories already exist before creating
+- Only generates when current year == ELECTION_YEAR
+- Logs category URLs for convenience
+- Uses Discourse Categories API with proper authentication
 
 ## Google Sheets Structure
 

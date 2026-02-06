@@ -22,6 +22,7 @@ from .config import (
     GIVING_NAME,
     GIVING_EMAIL,
     CONFIRMING_APPLICATION,
+    ELECTION_YEAR,
 )
 from .sheets_data_manager import DataManager
 from .admin_commands import (
@@ -63,6 +64,7 @@ from .application_handlers import (
 from .announcements import parse_fiirumi_posts, announce_new_responses
 from .admin_approval import handle_admin_approval
 from .sheet_updater import update_election_sheet
+from .fiirumi_area_generator import should_generate_areas, generate_election_areas
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -119,6 +121,13 @@ async def process_application_queue(
 
 async def post_init(app: Application, data_manager: DataManager):
     """Post initialization setup."""
+    # Generate election areas if configured for current year
+    if should_generate_areas(ELECTION_YEAR):
+        logger.info("Generating election areas for year %s", ELECTION_YEAR)
+        generate_election_areas(ELECTION_YEAR)
+    else:
+        logger.debug("Skipping election area generation")
+
     jq = app.job_queue
     if jq is None:
         raise ValueError("JobQueue is None")

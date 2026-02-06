@@ -45,7 +45,8 @@ This project uses GitHub Actions for continuous integration and deployment:
 - Create a Telegram bot and save the bot token.
 - Create Discourse api keys to be used by the bot.
 - Create an admin Telegram group and get the id of the group using, for example, `@RawDataBot`.
-- Create Discourse areas for the introductions and questions.
+- **Optional**: Set `ELECTION_YEAR` in `bot.env` to automatically generate Discourse areas (see Automatic Area Generation below).
+- **If not using automatic generation**: Manually create Discourse areas for the introductions and questions.
 - Create the post for the Election sheet. The post should contain a separate empty message that will be edited by the bot.
 - Create Google service account credentials with access to Google Sheets API for the bot to use and export the credentials as `google_credentials.json`.
 - Create `bot.env` according to the example file `bot.env.example`.
@@ -112,6 +113,44 @@ docker-compose -f docker-compose.prod.yml up
 - If names are not found, the bot will show available options
 - All bot commands work seamlessly with manual Google Sheets editing
 - Changes made directly in Google Sheets sync automatically with the bot
+
+## Automatic Fiirumi Area Generation
+
+The bot can automatically create the necessary Discourse categories for elections when started. This eliminates the need to manually create categories each year.
+
+### How It Works
+
+Set the `ELECTION_YEAR` environment variable in `bot.env` to the target election year:
+
+```bash
+ELECTION_YEAR=2025
+```
+
+When the bot starts and the current year matches `ELECTION_YEAR`, it will automatically create:
+
+1. **Parent category**: `vaalipeli-{year}` (e.g., "Vaalipeli 2025")
+2. **Subcategory**: `esittelyt` (Introductions) - for candidate introductions
+3. **Subcategory**: `kysymykset` (Questions) - for questions to candidates
+
+The bot will check if categories already exist before creating them, so it's safe to run multiple times.
+
+### Example URLs Generated
+
+For `ELECTION_YEAR=2025`:
+- Main: `https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025`
+- Introductions: `https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025/esittelyt`
+- Questions: `https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025/kysymykset`
+
+### Configuration
+
+After areas are generated, update your `bot.env` with the correct URLs:
+
+```bash
+TOPIC_LIST_URL=https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025/esittelyt/l/latest.json
+QUESTION_LIST_URL=https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025/kysymykset/l/latest.json
+```
+
+**Note**: Leave `ELECTION_YEAR` empty or unset if you want to manually create categories or prevent premature generation.
 
 ### Admin Approval
 

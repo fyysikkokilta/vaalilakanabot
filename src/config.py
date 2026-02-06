@@ -19,6 +19,15 @@ API_KEY = os.environ["API_KEY"]
 API_USERNAME = os.environ["API_USERNAME"]
 VAALILAKANA_POST_URL = os.environ["VAALILAKANA_POST_URL"]
 
+# Election year for automatic area generation (optional)
+# If set and matches current year, bot will auto-generate Discourse categories
+ELECTION_YEAR = os.environ.get("ELECTION_YEAR")
+if ELECTION_YEAR:
+    try:
+        ELECTION_YEAR = int(ELECTION_YEAR)
+    except ValueError:
+        ELECTION_YEAR = None
+
 # Conversation states
 SELECTING_DIVISION = "SELECTING_DIVISION"
 SELECTING_ROLE = "SELECTING_ROLE"
