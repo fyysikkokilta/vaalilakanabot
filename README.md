@@ -230,16 +230,15 @@ The bot creates and manages 4 worksheets in your Google Sheets document:
 
 #### Sheet 2: "Applications"
 
-| Column | Field                 | Description                                                            |
-| ------ | --------------------- | ---------------------------------------------------------------------- |
-| A      | Timestamp             | When the application was submitted                                     |
-| B      | Role_ID               | Reference to role ID from Election Structure                           |
-| C      | Telegram_ID           | User's Telegram ID (links to Users sheet for name/email)               |
-| D–F    | Name, Email, Telegram | Kept for compatibility; new applications leave these empty (see Users) |
-| G      | Fiirumi_Post          | Link to forum post                                                     |
-| H      | Status                | APPROVED, DENIED, REMOVED, ELECTED, or empty (pending)                 |
-| I      | Language              | Language of the application (fi/en)                                    |
-| J      | Group_ID              | Shared ID for group applications (same value = one line in sheet)      |
+| Column | Field        | Description                                                       |
+| ------ | ------------ | ----------------------------------------------------------------- |
+| A      | Timestamp    | When the application was submitted                                |
+| B      | Role_ID      | Reference to role ID from Election Structure                      |
+| C      | Telegram_ID  | User's Telegram ID (links to Users sheet for name/email)          |
+| D      | Fiirumi_Post | Link to forum post                                                |
+| E      | Status       | APPROVED, DENIED, REMOVED, ELECTED, or empty (pending)            |
+| F      | Language     | Language of the application (fi/en)                               |
+| G      | Group_ID     | Shared ID for group applications (same value = one line in sheet) |
 
 #### Sheet 3: "Users"
 

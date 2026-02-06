@@ -142,9 +142,13 @@ async def post_init(
     app.bot_data["data_manager"] = data_manager
 
     # Generate election areas if configured for current year
-    if should_generate_areas(ELECTION_YEAR) and ELECTION_YEAR is not None:
+    if should_generate_areas(int(ELECTION_YEAR)) if ELECTION_YEAR else False:
         logger.info("Generating election areas for year %s", ELECTION_YEAR)
-        generate_election_areas(ELECTION_YEAR)
+        success = (
+            generate_election_areas(int(ELECTION_YEAR)) if ELECTION_YEAR else False
+        )
+        if not success:
+            logger.error("Failed to generate election areas for year %s", ELECTION_YEAR)
     else:
         logger.debug("Skipping election area generation")
 

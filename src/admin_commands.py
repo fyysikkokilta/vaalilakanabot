@@ -143,12 +143,11 @@ async def remove_applicant(
                 )
 
                 telegram_id = app_data.get("Telegram_ID")
-                if telegram_id is not None:
-                    await context.bot.send_message(
-                        chat_id=telegram_id,
-                        text=notification_text,
-                        parse_mode="HTML",
-                    )
+                await context.bot.send_message(
+                    chat_id=telegram_id,
+                    text=notification_text,
+                    parse_mode="HTML",
+                )
                 logger.info(
                     "Sent removal notification to user %s for position %s in %s",
                     app_data.get("Telegram_ID"),

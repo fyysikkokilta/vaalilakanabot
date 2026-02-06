@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from typing import List, Optional, Tuple, cast
+from typing import List, Optional, Tuple
 from datetime import datetime
 
 from .sheets_manager import SheetsManager
@@ -44,7 +44,7 @@ class DataManager:
 
     def get_all_roles(self) -> List[ElectionStructureRow]:
         """Get all roles from Google Sheets with caching."""
-        return cast(List[ElectionStructureRow], self.sheets_manager.get_all_roles())
+        return self.sheets_manager.get_all_roles()
 
     def find_role_by_name(self, role_name: str) -> Optional[ElectionStructureRow]:
         """Find a role by name using SheetsManager's cached lookup."""
@@ -133,7 +133,7 @@ class DataManager:
             return []
 
     def get_applicant_display(self, app: ApplicationRow) -> Optional[UserRow]:
-        """Resolve Name, Email, Telegram for an application from Users sheet (or legacy app fields)."""
+        """Resolve Name, Email, Telegram for an application from Users sheet."""
         return self.sheets_manager.get_user_by_telegram_id(app.get("Telegram_ID"))
 
     def get_applicant_display_names_for_announcement(
@@ -150,8 +150,7 @@ class DataManager:
         # Group application - get all member names
         group_apps = self._get_applications_for_group(role_id, group_id)
         names = [
-            get_user_name(self.get_applicant_display(app), "(?)")
-            for app in group_apps
+            get_user_name(self.get_applicant_display(app), "(?)") for app in group_apps
         ]
         return ", ".join(sorted(names))
 
@@ -217,8 +216,7 @@ class DataManager:
 
             group_apps = self._get_applications_for_group(role_id, group_id)
             group_names = frozenset(
-                get_user_name(self.get_applicant_display(a), "")
-                for a in group_apps
+                get_user_name(self.get_applicant_display(a), "") for a in group_apps
             )
 
             if group_names == target_names:
@@ -330,8 +328,7 @@ class DataManager:
             # Get all applications in this group
             group_apps = self._get_applications_for_group(role_id, group_id)
             group_names = {
-                get_user_name(self.get_applicant_display(a), "")
-                for a in group_apps
+                get_user_name(self.get_applicant_display(a), "") for a in group_apps
             }
 
             # Check if all group members are in the command
@@ -468,7 +465,7 @@ class DataManager:
     @property
     def channels(self) -> List[ChannelRow]:
         """Get all registered channels."""
-        return cast(List[ChannelRow], self.sheets_manager.get_all_channels())
+        return self.sheets_manager.get_all_channels()
 
     @property
     def vaalilakana_full(self) -> List[DivisionData]:

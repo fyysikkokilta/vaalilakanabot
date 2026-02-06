@@ -155,7 +155,7 @@ async def announce_new_responses(
         question_json = get_fiirumi_data(QUESTION_LIST_URL)
         question_list = question_json["topic_list"]["topics"]
 
-        new_responses = []
+        new_responses: List[Dict[str, Any]] = []
 
         for question in question_list:
             t_id = question["id"]
