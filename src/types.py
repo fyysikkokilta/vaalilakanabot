@@ -1,10 +1,13 @@
 """Types for the application process."""
 
-from typing import TypedDict, List, Optional, Literal
+from typing import TypedDict, List, Optional, Literal, Tuple
 
 
-RoleType = Literal["BOARD", "ELECTED", "NON-ELECTED", "AUDITOR"]
-ApplicationStatus = Literal["APPROVED", "DENIED", "REMOVED", "ELECTED", "PENDING"]
+RoleType = Literal["BOARD", "ELECTED", "NON_ELECTED", "AUDITOR"]
+ApplicationStatus = Literal["APPROVED", "DENIED", "REMOVED", "ELECTED", "PENDING", ""]
+
+# Type alias for common result pattern (success, message)
+ResultTuple = Tuple[bool, str]
 
 
 class UserRow(TypedDict):
@@ -14,7 +17,9 @@ class UserRow(TypedDict):
     Name: str
     Email: str
     Telegram: str  # @username
-    Show_On_Website_Consent: bool  # Consent to show person on the website's official page
+    Show_On_Website_Consent: (
+        bool  # Consent to show person on the website's official page
+    )
     Updated_At: str  # ISO timestamp of last update
 
 
@@ -39,7 +44,7 @@ class ApplicationRow(TypedDict):
     Telegram_ID: int
     Fiirumi_Post: str
     Status: ApplicationStatus
-    Language: str
+    Language: Literal["fi", "en"]
     Group_ID: Optional[str]  # UUID linking group applications together
 
 
@@ -77,3 +82,24 @@ class ChannelRow(TypedDict):
     """Channel row dictionary."""
 
     Channel_ID: int
+
+
+class ApprovalResult(TypedDict):
+    """Result of an approval/rejection action."""
+
+    status: str  # "approved" or "rejected"
+
+
+class ApplicationWithDisplay(ApplicationRow):
+    """Application row enriched with user display information."""
+
+    Name: str
+    Email: str
+    Telegram: str
+
+
+class ConsentedApplicant(TypedDict):
+    """Applicant data for website export with consent."""
+
+    name: str
+    telegram: Optional[str]  # None if not provided
