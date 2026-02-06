@@ -3,12 +3,15 @@
 import logging
 import os
 import uuid
+import time
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable, TypeVar, Any
 from collections import deque
+from functools import wraps
 from cachetools import cached, TTLCache
 import gspread
 from google.oauth2.service_account import Credentials
+from gspread.exceptions import APIError
 from .types import (
     ApplicationRow,
     ChannelRow,
@@ -26,6 +29,70 @@ logger = logging.getLogger("vaalilakanabot")
 _roles_cache = TTLCache(maxsize=1, ttl=300)
 _applications_cache = TTLCache(maxsize=1, ttl=300)
 _channels_cache = TTLCache(maxsize=1, ttl=300)
+
+# Persistent storage for last known good values
+_last_known_roles: Optional[List[ElectionStructureRow]] = None
+_last_known_applications: Optional[List[ApplicationRow]] = None
+_last_known_channels: Optional[List[ChannelRow]] = None
+
+T = TypeVar('T')
+
+
+def retry_on_api_error(max_retries: int = 3, backoff_factor: float = 2.0):
+    """Decorator to retry API calls with exponential backoff on 503 errors."""
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            last_exception = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except APIError as e:
+                    last_exception = e
+                    # Check if it's a 503 or other retryable error
+                    if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+                        status_code = e.response.status_code
+                    else:
+                        # Try to extract status code from error message
+                        error_str = str(e)
+                        if '503' in error_str:
+                            status_code = 503
+                        else:
+                            # For other API errors, don't retry
+                            raise
+
+                    if status_code in (429, 500, 502, 503, 504):
+                        # Retryable errors
+                        wait_time = backoff_factor ** attempt
+                        logger.warning(
+                            "API error %s in %s (attempt %d/%d), retrying in %.1fs: %s",
+                            status_code,
+                            func.__name__,
+                            attempt + 1,
+                            max_retries,
+                            wait_time,
+                            e
+                        )
+                        time.sleep(wait_time)
+                    else:
+                        # Non-retryable error, raise immediately
+                        raise
+                except Exception as e:
+                    # For non-API errors, log and raise
+                    logger.error("Non-retryable error in %s: %s", func.__name__, e)
+                    raise
+
+            # All retries exhausted
+            logger.error(
+                "All %d retry attempts exhausted for %s, last error: %s",
+                max_retries,
+                func.__name__,
+                last_exception
+            )
+            raise last_exception
+
+        return wrapper
+    return decorator
 
 
 class SheetsManager:  # pylint: disable=too-many-public-methods
@@ -152,13 +219,44 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         _applications_cache.clear()
         _channels_cache.clear()
 
+    @retry_on_api_error(max_retries=3, backoff_factor=2.0)
+    def _get_all_values_with_retry(self, worksheet) -> List[List[Any]]:
+        """Get all values from a worksheet with retry logic."""
+        return worksheet.get_all_values()
+
+    @retry_on_api_error(max_retries=3, backoff_factor=2.0)
+    def _get_all_records_with_retry(self, worksheet) -> List[Dict[str, Any]]:
+        """Get all records from a worksheet with retry logic."""
+        return worksheet.get_all_records()
+
+    @retry_on_api_error(max_retries=3, backoff_factor=2.0)
+    def _batch_update_with_retry(self, worksheet, updates: List[Dict[str, Any]]) -> None:
+        """Perform batch update on a worksheet with retry logic."""
+        worksheet.batch_update(updates)
+
+    @retry_on_api_error(max_retries=3, backoff_factor=2.0)
+    def _update_with_retry(self, worksheet, range_str: str, values: List[List[Any]]) -> None:
+        """Perform update on a worksheet with retry logic."""
+        worksheet.update(range_str, values)
+
+    @retry_on_api_error(max_retries=3, backoff_factor=2.0)
+    def _delete_rows_with_retry(self, worksheet, row_index: int) -> None:
+        """Delete a row from a worksheet with retry logic."""
+        worksheet.delete_rows(row_index)
+
     @cached(cache=_roles_cache)
     def get_all_roles(self) -> List[ElectionStructureRow]:
         """Get all roles with caching and ensure IDs exist when cache refreshes.
         Also ensures that every role has a unique ID."""
+        global _last_known_roles
+
         try:
-            all_values = self.election_sheet.get_all_values()
+            all_values = self._get_all_values_with_retry(self.election_sheet)
             if not all_values:
+                # If we get empty data but have a cached version, use that
+                if _last_known_roles:
+                    logger.warning("Empty data from sheets, using last known roles")
+                    return _last_known_roles
                 return []
 
             headers = all_values[0]
@@ -185,13 +283,22 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
             # Perform bulk update if there are missing IDs
             if updates:
-                self.election_sheet.batch_update(updates)
+                self._batch_update_with_retry(self.election_sheet, updates)
                 logger.info("Assigned IDs to %s role rows without IDs", len(updates))
 
-            return self.election_sheet.get_all_records()
+            result = self._get_all_records_with_retry(self.election_sheet)
+
+            # Persist last known good value
+            _last_known_roles = result
+
+            return result
 
         except Exception as e:
             logger.error("Error getting roles: %s", e)
+            # Return last known good value if available
+            if _last_known_roles:
+                logger.warning("Returning last known roles due to error")
+                return _last_known_roles
             return []
 
     def get_divisions(self) -> List[DivisionDict]:
@@ -229,10 +336,21 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
     @cached(cache=_applications_cache)
     def get_all_applications_from_sheets(self) -> List[ApplicationRow]:
         """Get all applications with caching (1 minute TTL)."""
+        global _last_known_applications
+
         try:
-            return self.applications_sheet.get_all_records()
+            result = self._get_all_records_with_retry(self.applications_sheet)
+
+            # Persist last known good value
+            _last_known_applications = result
+
+            return result
         except Exception as e:
             logger.error("Error getting all applications: %s", e)
+            # Return last known good value if available
+            if _last_known_applications:
+                logger.warning("Returning last known applications due to error")
+                return _last_known_applications
             return []
 
     def get_all_applications(self) -> List[ApplicationRow]:
@@ -336,8 +454,8 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             end_row = start_row + len(batch_data) - 1
             range_str = f"A{start_row}:I{end_row}"
 
-            # Perform batch update
-            self.applications_sheet.update(range_str, batch_data)
+            # Perform batch update with retry
+            self._update_with_retry(self.applications_sheet, range_str, batch_data)
 
             logger.info(
                 "Flushed %d applications from queue to sheets", len(applications_to_add)
@@ -409,8 +527,8 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             updates_to_process = list(self.status_update_queue)
             self.status_update_queue.clear()
 
-            # Get current sheet data once
-            all_data = self.applications_sheet.get_all_values()
+            # Get current sheet data once with retry
+            all_data = self._get_all_values_with_retry(self.applications_sheet)
             headers = all_data[0]
 
             # Find column indices
@@ -465,9 +583,9 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                         telegram_id,
                     )
 
-            # Perform batch update if there are any updates
+            # Perform batch update if there are any updates with retry
             if batch_updates:
-                self.applications_sheet.batch_update(batch_updates)
+                self._batch_update_with_retry(self.applications_sheet, batch_updates)
 
             logger.info(
                 "Flushed %d status updates from queue to sheets", processed_count
@@ -501,8 +619,10 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
                 if batch_data:
                     range_end = current_row + len(batch_data) - 1
-                    self.channels_sheet.update(
-                        f"A{current_row}:B{range_end}", batch_data
+                    self._update_with_retry(
+                        self.channels_sheet,
+                        f"A{current_row}:B{range_end}",
+                        batch_data
                     )
                     logger.info("Added %d channels in batch", len(batch_data))
 
@@ -511,8 +631,8 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 channels_to_remove = list(self.channel_remove_queue)
                 self.channel_remove_queue.clear()
 
-                # Get current sheet data
-                all_data = self.channels_sheet.get_all_values()
+                # Get current sheet data with retry
+                all_data = self._get_all_values_with_retry(self.channels_sheet)
 
                 # Find rows to delete (collect indices in reverse order)
                 rows_to_delete = []
@@ -522,7 +642,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
                 # Delete rows in reverse order to maintain correct indices
                 for row_index in reversed(rows_to_delete):
-                    self.channels_sheet.delete_rows(row_index)
+                    self._delete_rows_with_retry(self.channels_sheet, row_index)
 
                 logger.info("Removed %d channels in batch", len(rows_to_delete))
 
@@ -593,16 +713,27 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
     @cached(cache=_channels_cache)
     def get_all_channels(self) -> List[ChannelRow]:
         """Get all registered channels."""
+        global _last_known_channels
+
         try:
-            all_data = self.channels_sheet.get_all_records()
+            all_data = self._get_all_records_with_retry(self.channels_sheet)
             # Get distinct channel IDs
             unique_ids = {
                 int(str(record.get("Chat_ID", "")).replace("−", "-"))
                 for record in all_data
             }
-            return [ChannelRow(Channel_ID=chat_id) for chat_id in unique_ids]
+            result = [ChannelRow(Channel_ID=chat_id) for chat_id in unique_ids]
+
+            # Persist last known good value
+            _last_known_channels = result
+
+            return result
         except Exception as e:
             logger.error("Error getting channels: %s", e)
+            # Return last known good value if available
+            if _last_known_channels:
+                logger.warning("Returning last known channels due to error")
+                return _last_known_channels
             return []
 
     def add_channel(self, chat_id: int) -> bool:
