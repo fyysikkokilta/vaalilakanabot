@@ -4,8 +4,10 @@ A Telegram bot that maintains a listing of candidates during elections and annou
 
 ## Features
 
-- Guild members can apply for both elected and non-elected positions.
+- **Registration**: Users register once with name, email, and consent (show on website's official page). Use `/register` (English) or `/rekisteröidy` (Finnish) in a private chat. Registration can be updated by running the command again.
+- Guild members can apply for both elected and non-elected positions. **Applying requires prior registration**; the bot will prompt unregistered users to register first.
 - **Admin approval**: Applications for elected positions (board and elected officials) require admin approval before being added to the election sheet.
+- **Group applications**: Applicants can apply together for the same role. They tell the admins; an admin uses `/combine <position>, <name1>, <name2>, ...` to link them. Group members then appear on one line in the election sheet. When marking a group as elected, the admin must list all members: `/elected <position>, <name1>, <name2>, ...`.
 - Announces in chats where the bot has been added whenever there's a new post on Fiirumi.
 - The bot's admin user can maintain the electronic election sheet.
 - Jauhis fun
@@ -82,10 +84,14 @@ docker-compose -f docker-compose.prod.yml up
 - `/stop` - Unregister channel from announcements
 - `/lakana` - Show current election sheet (Finnish)
 - `/sheet` - Show current election sheet (English)
-- `/hakemukset` - Show your applications (Finnish)
-- `/applications` - Show your applications (English)
-- `/hae` - Start application form (Finnish, private chat only)
-- `/apply` - Start application form (English, private chat only)
+- `/hakemukset` - Show your applications (Finnish, private chat)
+- `/applications` - Show your applications (English, private chat)
+- **Registration (private chat):** You must register before applying.
+  - `/rekisteröidy` - Register or update your info (Finnish)
+  - `/register` - Register or update your info (English)
+- **Applying (private chat):**
+  - `/hae` - Start application form (Finnish)
+  - `/apply` - Start application form (English)
 - `/apua` - Show help guide (Finnish)
 - `/help` - Show help guide (English)
 
@@ -101,16 +107,17 @@ docker-compose -f docker-compose.prod.yml up
 ### Admin Commands (Admin Chat Only)
 
 - `/remove <position>, <name>` - Remove applicant from position
-- `/elected <position>, <name>` - Mark applicant as elected
+- `/elected <position>, <name>` or `<position>, <name1>, <name2>, ...` - Mark as elected. **For group applications you must list all members** (e.g. `/elected Puheenjohtaja, Maija, Pekka`).
+- `/combine <position>, <name1>, <name2>, ...` - Link applicants as a group (they appear on one line; use when applicants apply together).
 - `/add_fiirumi <position>, <name>, <thread_id>` - Add Fiirumi link to applicant
 - `/remove_fiirumi <position>, <name>` - Remove Fiirumi link from applicant
-- `/export_officials_website` - Export officials data as CSV for Guild website
+- `/export_officials_website` - Export officials data as CSV for Guild website (respects Users sheet consent)
 - `/admin_help` - Show detailed admin commands help
 
 **Note:**
 
 - Admin commands support both Finnish and English division and role names
-- If names are not found, the bot will show available options
+- If a name is not found, the bot will show available options
 - All bot commands work seamlessly with manual Google Sheets editing
 - Changes made directly in Google Sheets sync automatically with the bot
 
@@ -137,6 +144,7 @@ The bot will check if categories already exist before creating them, so it's saf
 ### Example URLs Generated
 
 For `ELECTION_YEAR=2025`:
+
 - Main: `https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025`
 - Introductions: `https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025/esittelyt`
 - Questions: `https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025/kysymykset`
@@ -167,6 +175,21 @@ Applications for elected positions require admin approval:
    - A rejection notification is sent to the applicant
 5. The user cannot submit a new application to the same position as long as the previous application is pending.
 
+### Registration
+
+1. In a **private chat** with the bot, use `/register` (English) or `/rekisteröidy` (Finnish).
+2. Enter your full name, email, and whether your name may be shown on the guild website.
+3. After registering, you can apply with `/apply` or `/hae`. Running `/register` or `/rekisteröidy` again updates your info.
+
+### Group Applications
+
+When several people apply together for the same role:
+
+1. Each person applies normally (they must be registered). They tell the board they are applying as a group.
+2. In the admin chat, an admin runs: `/combine <position>, <name1>, <name2>, ...` (all names for that role that form the group).
+3. The bot links those applications with a shared Group_ID; they then appear on **one line** in the election sheet (e.g. "Name1, Name2").
+4. When marking the group as elected, the admin must list **all** members: `/elected <position>, <name1>, <name2>, ...`. If any member is missing, the bot asks to list all members.
+
 ## Google Sheets Integration
 
 The bot uses Google Sheets as the complete data storage solution for all bot data (election structure, applications, channels, forum posts, etc.), providing easier admin management and real-time collaboration.
@@ -187,7 +210,7 @@ The bot uses Google Sheets as the complete data storage solution for all bot dat
 
 ### Google Sheets Structure
 
-The bot creates and manages 3 worksheets in your Google Sheets document:
+The bot creates and manages 4 worksheets in your Google Sheets document:
 
 #### Sheet 1: "Election Structure"
 
@@ -204,18 +227,31 @@ The bot creates and manages 3 worksheets in your Google Sheets document:
 
 #### Sheet 2: "Applications"
 
-| Column | Field        | Description                                                    |
-| ------ | ------------ | -------------------------------------------------------------- |
-| A      | Role_ID      | Reference to role ID from Election Structure                   |
-| B      | Telegram_ID  | User's Telegram ID                                             |
-| C      | Name         | Applicant's name                                               |
-| D      | Email        | Applicant's email                                              |
-| E      | Telegram     | Telegram username                                              |
-| F      | Fiirumi_Post | Link to forum post                                             |
-| G      | Status       | "APPROVED", "DENIED", "REMOVED", "ELECTED", or empty (pending) |
-| H      | Language     | Language of the application for later announcements            |
+| Column | Field                 | Description                                                            |
+| ------ | --------------------- | ---------------------------------------------------------------------- |
+| A      | Timestamp             | When the application was submitted                                     |
+| B      | Role_ID               | Reference to role ID from Election Structure                           |
+| C      | Telegram_ID           | User's Telegram ID (links to Users sheet for name/email)               |
+| D–F    | Name, Email, Telegram | Kept for compatibility; new applications leave these empty (see Users) |
+| G      | Fiirumi_Post          | Link to forum post                                                     |
+| H      | Status                | APPROVED, DENIED, REMOVED, ELECTED, or empty (pending)                 |
+| I      | Language              | Language of the application (fi/en)                                    |
+| J      | Group_ID              | Shared ID for group applications (same value = one line in sheet)      |
 
-#### Sheet 3: "Channels"
+#### Sheet 3: "Users"
+
+| Column | Field                   | Description                                                    |
+| ------ | ----------------------- | -------------------------------------------------------------- |
+| A      | Telegram_ID             | User's Telegram ID                                             |
+| B      | Name                    | Full name                                                      |
+| C      | Email                   | Email address                                                  |
+| D      | Telegram                | Telegram username                                              |
+| E      | Show_On_Website_Consent | TRUE/FALSE – consent to show person on website's official page |
+| F      | Updated_At              | Last update timestamp                                          |
+
+Users register via `/register` or `/rekisteröidy`; applying uses this data. The single consent field controls whether the person is shown on the website's official page (used by `/export_officials_website`).
+
+#### Sheet 4: "Channels"
 
 | Column | Field      | Description                 |
 | ------ | ---------- | --------------------------- |

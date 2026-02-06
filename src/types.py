@@ -14,9 +14,7 @@ class UserRow(TypedDict):
     Name: str
     Email: str
     Telegram: str  # @username
-    Show_Name_Consent: bool  # Consent to show name on website
-    Show_Image_Consent: bool  # Consent to show image on website
-    Show_Telegram_Consent: bool  # Consent to show Telegram handle on website
+    Show_On_Website_Consent: bool  # Consent to show person on the website's official page
     Updated_At: str  # ISO timestamp of last update
 
 
@@ -34,18 +32,11 @@ class ElectionStructureRow(TypedDict):
 
 
 class ApplicationRow(TypedDict):
-    """Row in the applications sheet.
-
-    Note: Name, Email, Telegram fields are kept for backward compatibility
-    but should reference UserRow data when Users sheet is in use.
-    """
+    """Row in the applications sheet. User display info (name, email, telegram) comes from Users sheet by Telegram_ID."""
 
     Timestamp: str
     Role_ID: str
     Telegram_ID: int
-    Name: str
-    Email: str
-    Telegram: str
     Fiirumi_Post: str
     Status: ApplicationStatus
     Language: str

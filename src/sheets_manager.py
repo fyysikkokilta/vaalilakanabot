@@ -38,11 +38,12 @@ _last_known_applications: Optional[List[ApplicationRow]] = None
 _last_known_channels: Optional[List[ChannelRow]] = None
 _last_known_users: Optional[List[UserRow]] = None
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def retry_on_api_error(max_retries: int = 3, backoff_factor: float = 2.0):
     """Decorator to retry API calls with exponential backoff on 503 errors."""
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> T:
@@ -53,12 +54,12 @@ def retry_on_api_error(max_retries: int = 3, backoff_factor: float = 2.0):
                 except APIError as e:
                     last_exception = e
                     # Check if it's a 503 or other retryable error
-                    if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+                    if hasattr(e, "response") and hasattr(e.response, "status_code"):
                         status_code = e.response.status_code
                     else:
                         # Try to extract status code from error message
                         error_str = str(e)
-                        if '503' in error_str:
+                        if "503" in error_str:
                             status_code = 503
                         else:
                             # For other API errors, don't retry
@@ -66,7 +67,7 @@ def retry_on_api_error(max_retries: int = 3, backoff_factor: float = 2.0):
 
                     if status_code in (429, 500, 502, 503, 504):
                         # Retryable errors
-                        wait_time = backoff_factor ** attempt
+                        wait_time = backoff_factor**attempt
                         logger.warning(
                             "API error %s in %s (attempt %d/%d), retrying in %.1fs: %s",
                             status_code,
@@ -74,7 +75,7 @@ def retry_on_api_error(max_retries: int = 3, backoff_factor: float = 2.0):
                             attempt + 1,
                             max_retries,
                             wait_time,
-                            e
+                            e,
                         )
                         time.sleep(wait_time)
                     else:
@@ -90,11 +91,12 @@ def retry_on_api_error(max_retries: int = 3, backoff_factor: float = 2.0):
                 "All %d retry attempts exhausted for %s, last error: %s",
                 max_retries,
                 func.__name__,
-                last_exception
+                last_exception,
             )
             raise last_exception
 
         return wrapper
+
     return decorator
 
 
@@ -193,22 +195,19 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             self.applications_sheet = self.spreadsheet.worksheet("Applications")
         except gspread.WorksheetNotFound:
             self.applications_sheet = self.spreadsheet.add_worksheet(
-                title="Applications", rows=1000, cols=10
+                title="Applications", rows=1000, cols=7
             )
-            # Add headers
+            # Add headers (user info lives in Users sheet)
             headers = [
                 "Timestamp",
                 "Role_ID",
                 "Telegram_ID",
-                "Name",
-                "Email",
-                "Telegram",
                 "Fiirumi_Post",
                 "Status",
                 "Language",
                 "Group_ID",
             ]
-            self.applications_sheet.update("A1:J1", [headers])
+            self.applications_sheet.update("A1:G1", [headers])
 
         # Get or create Channels sheet
         try:
@@ -226,20 +225,18 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             self.users_sheet = self.spreadsheet.worksheet("Users")
         except gspread.WorksheetNotFound:
             self.users_sheet = self.spreadsheet.add_worksheet(
-                title="Users", rows=1000, cols=8
+                title="Users", rows=1000, cols=6
             )
-            # Add headers
+            # Add headers (single consent: show on website's official page)
             headers = [
                 "Telegram_ID",
                 "Name",
                 "Email",
                 "Telegram",
-                "Show_Name_Consent",
-                "Show_Image_Consent",
-                "Show_Telegram_Consent",
+                "Show_On_Website_Consent",
                 "Updated_At",
             ]
-            self.users_sheet.update("A1:H1", [headers])
+            self.users_sheet.update("A1:F1", [headers])
 
     def invalidate_caches(self):
         """Invalidate all caches."""
@@ -259,12 +256,16 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         return worksheet.get_all_records()
 
     @retry_on_api_error(max_retries=3, backoff_factor=2.0)
-    def _batch_update_with_retry(self, worksheet, updates: List[Dict[str, Any]]) -> None:
+    def _batch_update_with_retry(
+        self, worksheet, updates: List[Dict[str, Any]]
+    ) -> None:
         """Perform batch update on a worksheet with retry logic."""
         worksheet.batch_update(updates)
 
     @retry_on_api_error(max_retries=3, backoff_factor=2.0)
-    def _update_with_retry(self, worksheet, range_str: str, values: List[List[Any]]) -> None:
+    def _update_with_retry(
+        self, worksheet, range_str: str, values: List[List[Any]]
+    ) -> None:
         """Perform update on a worksheet with retry logic."""
         worksheet.update(range_str, values)
 
@@ -405,6 +406,8 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                             app["Status"] = status_update.get("Status")
                         if status_update.get("Fiirumi_Post") is not None:
                             app["Fiirumi_Post"] = status_update.get("Fiirumi_Post")
+                        if status_update.get("Group_ID") is not None:
+                            app["Group_ID"] = status_update.get("Group_ID")
                         break
 
             return all_applications
@@ -470,9 +473,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     app.get("Timestamp"),
                     app.get("Role_ID"),
                     app.get("Telegram_ID"),
-                    app.get("Name"),
-                    app.get("Email"),
-                    app.get("Telegram"),
                     app.get("Fiirumi_Post"),
                     app.get("Status"),
                     app.get("Language"),
@@ -482,7 +482,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
             # Calculate the range for batch update
             end_row = start_row + len(batch_data) - 1
-            range_str = f"A{start_row}:J{end_row}"
+            range_str = f"A{start_row}:G{end_row}"
 
             # Perform batch update with retry
             self._update_with_retry(self.applications_sheet, range_str, batch_data)
@@ -505,6 +505,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         telegram_id: int,
         status: str = None,
         fiirumi_post: str = None,
+        group_id: str = None,
     ) -> bool:
         """Queue an application status update for batch processing."""
         try:
@@ -519,6 +520,8 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                         queued_update["Status"] = status
                     if fiirumi_post is not None:
                         queued_update["Fiirumi_Post"] = fiirumi_post
+                    if group_id is not None:
+                        queued_update["Group_ID"] = group_id
                     logger.info(
                         "Updated queued status change for role %s, user %s",
                         role_id,
@@ -526,13 +529,14 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     )
                     return True
 
-            # Add new status update to queue
-            status_update = ApplicationRow(
-                Role_ID=role_id,
-                Telegram_ID=telegram_id,
-                Status=status,
-                Fiirumi_Post=fiirumi_post,
-            )
+            # Add new status update to queue (partial update dict, not full ApplicationRow)
+            status_update = {
+                "Role_ID": role_id,
+                "Telegram_ID": telegram_id,
+                "Status": status,
+                "Fiirumi_Post": fiirumi_post,
+                "Group_ID": group_id or "",
+            }
             self.status_update_queue.append(status_update)
 
             logger.info(
@@ -566,6 +570,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             telegram_id_col = headers.index("Telegram_ID") + 1
             status_col = headers.index("Status") + 1
             fiirumi_col = headers.index("Fiirumi_Post") + 1
+            group_id_col = headers.index("Group_ID") + 1
 
             # Prepare batch updates
             batch_updates = []
@@ -576,6 +581,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 telegram_id = update_data.get("Telegram_ID")
                 status = update_data.get("Status")
                 fiirumi_post = update_data.get("Fiirumi_Post")
+                group_id = update_data.get("Group_ID")
 
                 # Find the row for this application (search from end to start)
                 row_found = False
@@ -600,6 +606,13 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                                 {
                                     "range": f"{chr(64 + fiirumi_col)}{i}",
                                     "values": [[fiirumi_post]],
+                                }
+                            )
+                        if group_id is not None and group_id != "":
+                            batch_updates.append(
+                                {
+                                    "range": f"{chr(64 + group_id_col)}{i}",
+                                    "values": [[group_id]],
                                 }
                             )
                         processed_count += 1
@@ -650,9 +663,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 if batch_data:
                     range_end = current_row + len(batch_data) - 1
                     self._update_with_retry(
-                        self.channels_sheet,
-                        f"A{current_row}:B{range_end}",
-                        batch_data
+                        self.channels_sheet, f"A{current_row}:B{range_end}", batch_data
                     )
                     logger.info("Added %d channels in batch", len(batch_data))
 
@@ -667,7 +678,10 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 # Find rows to delete (collect indices in reverse order)
                 rows_to_delete = []
                 for i, row in enumerate(all_data[1:], start=2):  # Start from row 2
-                    if len(row) > 0 and int(str(row[0]).replace("−", "-")) in channels_to_remove:
+                    if (
+                        len(row) > 0
+                        and int(str(row[0]).replace("−", "-")) in channels_to_remove
+                    ):
                         rows_to_delete.append(i)
 
                 # Delete rows in reverse order to maintain correct indices
@@ -708,13 +722,59 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                         Roles=[],
                     )
 
-                # Get approved/elected applications for this role
-                applicants = [
+                # Get approved/elected applications for this role; enrich with user display info
+                raw_applicants = [
                     app
                     for app in all_applications
                     if app.get("Role_ID") == role.get("ID")
                     and app.get("Status", "PENDING") in ("APPROVED", "ELECTED")
                 ]
+                enriched = []
+                for app in raw_applicants:
+                    user = self.get_user_by_telegram_id(app.get("Telegram_ID"))
+                    disp = dict(app)
+                    disp["Name"] = user.get("Name", "") if user else app.get("Name", "")
+                    disp["Email"] = (
+                        user.get("Email", "") if user else app.get("Email", "")
+                    )
+                    disp["Telegram"] = (
+                        user.get("Telegram", "") if user else app.get("Telegram", "")
+                    )
+                    enriched.append(disp)
+
+                # Group by Group_ID so grouped applications appear on one line
+                by_group: Dict[str, List[dict]] = {}
+                for app in enriched:
+                    gid = app.get("Group_ID") or ""
+                    if gid and gid.strip():
+                        key = gid.strip()
+                    else:
+                        key = (
+                            f"_single_{app.get('Telegram_ID')}"  # unique per applicant
+                        )
+                    by_group.setdefault(key, []).append(app)
+
+                applicants = []
+                for group_apps in by_group.values():
+                    if len(group_apps) == 1:
+                        applicants.append(group_apps[0])
+                    else:
+                        # Merge into one display entry: names on same line
+                        first = group_apps[0]
+                        merged = dict(first)
+                        merged["Name"] = ", ".join(
+                            a.get("Name", "") or "(?)" for a in group_apps
+                        )
+                        # Use first non-empty Fiirumi_Post if any
+                        merged["Fiirumi_Post"] = next(
+                            (
+                                a.get("Fiirumi_Post", "")
+                                for a in group_apps
+                                if a.get("Fiirumi_Post")
+                            ),
+                            first.get("Fiirumi_Post", ""),
+                        )
+                        applicants.append(merged)
 
                 role_data = role.copy()
                 role_data["Applicants"] = applicants
@@ -851,9 +911,10 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     Name=record.get("Name", ""),
                     Email=record.get("Email", ""),
                     Telegram=record.get("Telegram", ""),
-                    Show_Name_Consent=record.get("Show_Name_Consent", "FALSE") == "TRUE",
-                    Show_Image_Consent=record.get("Show_Image_Consent", "FALSE") == "TRUE",
-                    Show_Telegram_Consent=record.get("Show_Telegram_Consent", "FALSE") == "TRUE",
+                    Show_On_Website_Consent=record.get(
+                        "Show_On_Website_Consent", "FALSE"
+                    )
+                    == "TRUE",
                     Updated_At=record.get("Updated_At", ""),
                 )
                 result.append(user)
@@ -873,7 +934,9 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
     def get_user_by_telegram_id(self, telegram_id: int) -> Optional[UserRow]:
         """Get a user by Telegram ID."""
         all_users = self.get_all_users()
-        return next((user for user in all_users if user.get("Telegram_ID") == telegram_id), None)
+        return next(
+            (user for user in all_users if user.get("Telegram_ID") == telegram_id), None
+        )
 
     def upsert_user(self, user: UserRow) -> bool:
         """Queue a user to be added or updated."""
@@ -927,10 +990,9 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 # Find if user exists
                 user_row_index = None
                 for i, row in enumerate(all_data[1:], start=2):
-                    if (
-                        len(row) > telegram_id_col - 1
-                        and str(row[telegram_id_col - 1]) == str(telegram_id)
-                    ):
+                    if len(row) > telegram_id_col - 1 and str(
+                        row[telegram_id_col - 1]
+                    ) == str(telegram_id):
                         user_row_index = i
                         break
 
@@ -939,9 +1001,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     user.get("Name"),
                     user.get("Email"),
                     user.get("Telegram"),
-                    "TRUE" if user.get("Show_Name_Consent") else "FALSE",
-                    "TRUE" if user.get("Show_Image_Consent") else "FALSE",
-                    "TRUE" if user.get("Show_Telegram_Consent") else "FALSE",
+                    "TRUE" if user.get("Show_On_Website_Consent") else "FALSE",
                     user.get("Updated_At"),
                 ]
 
@@ -949,7 +1009,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     # Update existing user
                     batch_updates.append(
                         {
-                            "range": f"A{user_row_index}:H{user_row_index}",
+                            "range": f"A{user_row_index}:F{user_row_index}",
                             "values": [user_data],
                         }
                     )
@@ -966,7 +1026,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             if new_users:
                 start_row = len(all_data) + 1
                 end_row = start_row + len(new_users) - 1
-                range_str = f"A{start_row}:H{end_row}"
+                range_str = f"A{start_row}:F{end_row}"
                 self._update_with_retry(self.users_sheet, range_str, new_users)
                 logger.info("Added %d new users", len(new_users))
 

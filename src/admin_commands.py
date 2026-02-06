@@ -59,7 +59,8 @@ async def admin_help(update: Update, _: ContextTypes.DEFAULT_TYPE):
 
 <b>Applicant Management:</b>
 • /remove &lt;position&gt;, &lt;name&gt; - Remove applicant from position
-• /elected &lt;position&gt;, &lt;name&gt; - Mark applicant as elected
+• /elected &lt;position&gt;, &lt;name&gt; or &lt;name1&gt;, &lt;name2&gt;, ... - Mark as elected (for groups, list all members)
+• /combine &lt;position&gt;, &lt;name1&gt;, &lt;name2&gt;, ... - Link applicants as a group (same Group_ID)
 
 <b>Fiirumi Link Management:</b>
 • /add_fiirumi &lt;position&gt;, &lt;name&gt;, &lt;thread_id&gt; - Add Fiirumi link to applicant
@@ -78,8 +79,13 @@ async def admin_help(update: Update, _: ContextTypes.DEFAULT_TYPE):
 
 <b>Examples:</b>
 • /remove Puheenjohtaja, Maija Meikäläinen
-• /elected Varapuheenjohtaja, Pekka Päällikkö
+• /elected Varapuheenjohtaja, Pekka Päällikkö (or for group: /elected Role, Name1, Name2)
+• /combine Puheenjohtaja, Maija Meikäläinen, Pekka Päällikkö
 • /add_fiirumi Puheenjohtaja, Maija Meikäläinen, 12345
+
+<b>Group applications:</b>
+• When applicants apply together: use /combine with all names for that role. They will appear on one line.
+• When electing a group: use /elected with <b>all</b> members listed (e.g. /elected Role, Name1, Name2). The bot will reject if any group member is missing.
 
 <b>Important Notes:</b>
 • All commands work only in admin chat
@@ -230,82 +236,75 @@ async def unassociate_fiirumi(update: Update, data_manager: DataManager):
 async def add_elected_tag(
     update: Update, _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ):
-    """Mark an applicant as elected."""
+    """Mark applicant(s) as elected. For group applications, list all members: /elected <position>, <name1>, <name2>, ..."""
     try:
         if not is_admin_chat(update.message.chat.id):
             return
 
         text = parse_command_parameters(update.message.text, "/elected")
-        params = text.split(",")
+        params = [p.strip() for p in text.split(",") if p.strip()]
 
-        try:
-            position = params[0].strip()
-            name = params[1].strip()
-        except Exception as e:
+        if len(params) < 2:
             await update.message.reply_text(
-                "Invalid parameters - /elected <position>, <name>"
+                "Usage: /elected <position>, <name> or /elected <position>, <name1>, <name2>, ... (for groups list all members)"
             )
-            raise ValueError from e
+            return
 
-        # Find position by Finnish or English name
+        position = params[0]
+        names = params[1:]
+
         role = data_manager.find_role_by_name(position)
         if not role:
             await update.message.reply_text(f"Unknown position: {position}")
             return
 
-        data_manager.set_applicant_elected(role, name)
-        await update.message.reply_text(
-            f"Applicant elected:\n{role.get('Role_EN')}: {name}"
-        )
+        success, message = data_manager.set_applicants_elected(role, names)
+        await update.message.reply_text(message)
 
-        # Find the user's Telegram ID to send them a notification
-        # if role:
-        #    applications = data_manager.get_applications_for_role(role.get("ID"))
-        #    for app in applications:
-        #        if app.get("Name") == name:
-        #            user_id = app.get("Telegram_ID")
-        #            language = app.get("Language", "en")
+        if success:
+            logger.info(
+                "Applicant(s) %s elected for position %s by admin",
+                ", ".join(names),
+                role.get("Role_EN"),
+            )
+    except Exception as e:
+        logger.error(e)
 
-        #            # Send notification to the elected user
-        #            try:
-        #                notification_text = get_notification_text(
-        #                    "elected",
-        #                    get_role_name(role, language != "en"),
-        #                    language,
-        #                )
 
-        #                await context.bot.send_message(
-        #                    chat_id=user_id, text=notification_text, parse_mode="HTML"
-        #                )
-        #                logger.info(
-        #                    "Election notification sent to user %s for position %s",
-        #                    user_id,
-        #                    role.get("Role_EN"),
-        #                )
-        #            except Exception as e:
-        #                logger.error("Failed to notify elected user %s: %s", user_id, e)
-        #                    break
+async def combine_applicants(
+    update: Update, _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
+):
+    """Link applicants for a role as a group (same Group_ID). Usage: /combine <position>, <name1>, <name2>, ..."""
+    try:
+        if not is_admin_chat(update.message.chat.id):
+            return
 
-        # Send announcement to channels for BOARD and ELECTED roles
-        #    role_type = role.get("Type")
-        #    if role_type in ("BOARD", "ELECTED"):
-        #        await announce_to_channels(
-        #            f"🎉 <i>{name}</i> elected for <b>{role.get("Role_EN")}</b>",
-        #            context,
-        #            data_manager,
-        #        )
-        #        logger.info(
-        #            "Election announcement sent to channels for %s: %s",
-        #            role.get("Role_EN"),
-        #            name,
-        #        )
+        text = parse_command_parameters(update.message.text, "/combine")
+        params = [p.strip() for p in text.split(",") if p.strip()]
 
-        logger.info(
-            "Applicant %s elected for position %s by admin",
-            name,
-            role.get("Role_EN"),
-        )
+        if len(params) < 3:
+            await update.message.reply_text(
+                "Usage: /combine <position>, <name1>, <name2>, ... (at least 2 names)"
+            )
+            return
 
+        position = params[0]
+        names = params[1:]
+
+        role = data_manager.find_role_by_name(position)
+        if not role:
+            await update.message.reply_text(f"Unknown position: {position}")
+            return
+
+        success, message = data_manager.combine_applicants(role, names)
+        await update.message.reply_text(message)
+
+        if success:
+            logger.info(
+                "Applicants %s combined for position %s by admin",
+                ", ".join(names),
+                role.get("Role_EN"),
+            )
     except Exception as e:
         logger.error(e)
 
@@ -313,9 +312,9 @@ async def add_elected_tag(
 async def export_officials_website(update: Update, data_manager: DataManager):
     """Export officials data to CSV format compatible with the Guild website.
 
-    Respects user consent settings from the Users sheet:
-    - Only includes users who have given Show_Name_Consent
-    - Includes Telegram handle if Show_Telegram_Consent is given
+    Respects user consent from the Users sheet: only includes users who have
+    given Show_On_Website_Consent (show on the website's official page).
+    When consented, exports name and Telegram handle.
     """
     try:
         if not is_admin_chat(update.message.chat.id):
@@ -344,31 +343,24 @@ async def export_officials_website(update: Update, data_manager: DataManager):
                     telegram_id = applicant.get("Telegram_ID")
                     user = users_by_id.get(telegram_id)
 
-                    # Check consent: include if user has given Show_Name_Consent
-                    # OR if user info doesn't exist (backward compatibility)
+                    # Include only if user has given Show_On_Website_Consent (or no user record)
                     if user is None:
-                        # No user record, include for backward compatibility
-                        consented_applicants.append({
-                            "name": applicant.get("Name"),
-                            "telegram": None
-                        })
-                    elif user.get("Show_Name_Consent", False):
-                        # User has given consent to show name
-                        telegram_handle = None
-                        if user.get("Show_Telegram_Consent", False):
-                            telegram_handle = user.get("Telegram", "")
-
-                        consented_applicants.append({
-                            "name": applicant.get("Name"),
-                            "telegram": telegram_handle
-                        })
+                        consented_applicants.append(
+                            {"name": applicant.get("Name"), "telegram": None}
+                        )
+                    elif user.get("Show_On_Website_Consent", False):
+                        consented_applicants.append(
+                            {
+                                "name": applicant.get("Name"),
+                                "telegram": user.get("Telegram", "") or None,
+                            }
+                        )
                     else:
-                        # User exists but hasn't given consent
                         skipped_count += 1
                         logger.info(
-                            "Skipping official %s (role: %s) - no name consent",
+                            "Skipping official %s (role: %s) - no website consent",
                             applicant.get("Name"),
-                            role_data.get("Role_EN")
+                            role_data.get("Role_EN"),
                         )
 
                 # Only write row if there are consented applicants
@@ -378,7 +370,9 @@ async def export_officials_website(update: Update, data_manager: DataManager):
                     division_en = division_data.get("Division_EN")
                     role_fi = role_data.get("Role_FI")
                     role_en = role_data.get("Role_EN")
-                    output.write(f'"{division_fi}","{division_en}","{role_fi}","{role_en}"')
+                    output.write(
+                        f'"{division_fi}","{division_en}","{role_fi}","{role_en}"'
+                    )
 
                     # Write applicant names and optional Telegram handles
                     for applicant_data in consented_applicants:
@@ -399,7 +393,7 @@ async def export_officials_website(update: Update, data_manager: DataManager):
         # Add info message about consent filtering
         info_msg = "Officials data exported successfully."
         if skipped_count > 0:
-            info_msg += f"\n\nℹ️ Note: {skipped_count} elected official(s) were excluded because they haven't given consent to show their name on the website."
+            info_msg += f"\n\nℹ️ Note: {skipped_count} elected official(s) were excluded because they haven't given consent to be shown on the website's official page."
 
         await update.message.reply_text(info_msg)
         await update.message.reply_document(output, filename="officials.csv")
