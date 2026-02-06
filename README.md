@@ -202,6 +202,38 @@ The bot creates and manages 3 worksheets in your Google Sheets document:
 4. Use bot commands or direct editing for status changes
 5. Status options: APPROVED, DENIED, REMOVED, ELECTED, or empty (pending)
 
+### Election Sheet Preamble
+
+The bot automatically updates the election sheet post on Discourse with the latest data from Google Sheets. You can add a preamble (introduction text, instructions, announcements) that will be preserved when the bot updates the sheet.
+
+**How to add a preamble:**
+
+1. Edit the election sheet post on Discourse
+2. Add your preamble text at the top of the post
+3. Add the marker line: `---SHEET STARTS HERE---`
+4. The bot will preserve everything above the marker when updating
+
+**Example:**
+
+```
+Welcome to the 2025 elections! Please review the candidates below.
+
+Important dates:
+- Voting starts: 15.3.
+- Voting ends: 22.3.
+
+---SHEET STARTS HERE---
+
+[Bot-managed election sheet content appears here]
+```
+
+**Notes:**
+
+- The preamble can contain any Markdown formatting
+- The marker must be on its own line with no extra spaces
+- If no marker is present, the entire post will be replaced (no preamble preserved)
+- The bot updates the sheet automatically every 60 seconds
+
 ### Data Validation
 
 The system includes built-in validation to prevent the role name consistency issues you were concerned about:

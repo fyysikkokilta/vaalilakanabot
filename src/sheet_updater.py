@@ -1,7 +1,8 @@
 """Update the election sheet in Fiirumi."""
 
+import logging
 from datetime import datetime
-from typing import List
+from typing import List, Optional, Tuple
 import requests
 from telegram.ext import ContextTypes
 
@@ -10,6 +11,39 @@ from .types import DivisionData
 from .config import API_KEY, API_USERNAME, VAALILAKANA_POST_URL
 
 YEAR = datetime.now().year
+SHEET_MARKER = "---SHEET STARTS HERE---"
+
+logger = logging.getLogger("vaalilakanabot")
+
+
+def get_current_post_content() -> Optional[str]:
+    """Fetch the current content of the election sheet post."""
+    try:
+        headers = {
+            "Api-Key": API_KEY,
+            "Api-Username": API_USERNAME,
+        }
+        response = requests.get(VAALILAKANA_POST_URL, headers=headers, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("raw", "")
+    except Exception as e:
+        logger.error("Error fetching current post content: %s", e)
+        return None
+
+
+def extract_preamble_and_content(full_text: str) -> Tuple[str, bool]:
+    """Extract preamble from the post content.
+
+    Returns:
+        Tuple of (preamble, has_marker)
+        - preamble: Text before the marker (empty if no marker found)
+        - has_marker: True if marker was found in the text
+    """
+    if SHEET_MARKER in full_text:
+        parts = full_text.split(SHEET_MARKER, 1)
+        return parts[0].rstrip(), True
+    return "", False
 
 
 def data_to_markdown(data: List[DivisionData]) -> str:
@@ -90,16 +124,41 @@ def data_to_markdown(data: List[DivisionData]) -> str:
 async def update_election_sheet(
     _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ):
-    """Update the election sheet in the Guild website."""
+    """Update the election sheet in the Guild website.
+
+    Preserves any preamble text above the SHEET_MARKER if it exists.
+    """
     # Get full data from Google Sheets (includes non-elected roles)
     try:
         vaalilakana_data = data_manager.vaalilakana_full
     except Exception as e:
-        print("Error getting data from Google Sheets: %s", e)
+        logger.error("Error getting data from Google Sheets: %s", e)
         return None
 
     # Convert data to markdown
-    text = data_to_markdown(vaalilakana_data)
+    sheet_content = data_to_markdown(vaalilakana_data)
+
+    # Fetch current post to check for preamble
+    current_content = get_current_post_content()
+    preamble = ""
+
+    if current_content:
+        preamble, has_marker = extract_preamble_and_content(current_content)
+        if has_marker:
+            logger.info("Found preamble marker, preserving preamble (%d chars)", len(preamble))
+        elif preamble:
+            # If there's content but no marker found, don't preserve anything
+            # to avoid accidentally preserving old sheet data as preamble
+            logger.info("No marker found in existing post, not preserving content")
+            preamble = ""
+
+    # Build final content
+    if preamble:
+        # Add preamble, marker, and sheet content
+        final_text = f"{preamble}\n\n{SHEET_MARKER}\n\n{sheet_content}"
+    else:
+        # No preamble, just use sheet content
+        final_text = sheet_content
 
     headers = {
         "Api-Key": API_KEY,
@@ -108,12 +167,19 @@ async def update_election_sheet(
     }
 
     payload = {
-        "raw": text,
+        "raw": final_text,
     }
 
-    return requests.put(
-        VAALILAKANA_POST_URL,
-        headers=headers,
-        json=payload,
-        timeout=30,
-    )
+    try:
+        response = requests.put(
+            VAALILAKANA_POST_URL,
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+        response.raise_for_status()
+        logger.info("Successfully updated election sheet")
+        return response
+    except Exception as e:
+        logger.error("Error updating election sheet: %s", e)
+        return None
