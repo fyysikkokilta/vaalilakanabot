@@ -2,7 +2,8 @@
 
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional, cast
+
 import requests
 
 from .config import BASE_URL, API_KEY, API_USERNAME
@@ -40,7 +41,7 @@ def create_category(
     """
     url = f"{BASE_URL}/categories.json"
 
-    payload = {
+    payload: Dict[str, Any] = {
         "name": name,
         "color": color,
         "text_color": text_color,
@@ -49,7 +50,7 @@ def create_category(
     if slug:
         payload["slug"] = slug
 
-    if parent_category_id:
+    if parent_category_id is not None:
         payload["parent_category_id"] = parent_category_id
 
     try:
@@ -61,8 +62,10 @@ def create_category(
         )
         response.raise_for_status()
         result = response.json()
-        logger.info("Created category '%s' with ID %s", name, result["category"]["id"])
-        return result["category"]
+        category = result.get("category")
+        if category is not None:
+            logger.info("Created category '%s' with ID %s", name, category.get("id"))
+        return cast(Optional[Dict[str, Any]], result.get("category"))
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 422:
             # Category might already exist
@@ -94,7 +97,7 @@ def find_category_by_slug(slug: str) -> Optional[Dict[str, Any]]:
         )
         response.raise_for_status()
         result = response.json()
-        return result["category"]
+        return cast(Optional[Dict[str, Any]], result.get("category"))
     except Exception as e:
         logger.debug("Category with slug '%s' not found: %s", slug, e)
         return None
@@ -138,7 +141,7 @@ def generate_election_areas(year: int) -> bool:
     else:
         logger.info("Parent category '%s' already exists", parent_slug)
 
-    parent_id = parent_category["id"]
+    parent_id: int = int(parent_category["id"])
 
     # Create subcategories
     subcategories = [

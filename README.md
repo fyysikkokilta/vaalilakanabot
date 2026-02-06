@@ -27,7 +27,10 @@ This project uses GitHub Actions for continuous integration and deployment:
 
 ## Setup
 
-- Install the required libraries: `pip install -r requirements.txt`
+- Install the project (dependencies are defined in `pyproject.toml`):  
+  `pip install -e .`  
+  For development with type checkers and linting:  
+  `pip install -e ".[dev]"`
 - Create a Telegram bot with Bot Father and save the bot token.
 - Create a Discourse API key for the bot.
 - Create an admin Telegram group and save its ID, for example using the `@RawDataBot`.
@@ -39,7 +42,7 @@ This project uses GitHub Actions for continuous integration and deployment:
   - Set `GOOGLE_SHEET_URL` in `bot.env` to the full URL of your Google Sheet
 - Create `bot.env` according to the example file `bot.env.example`.
 - Initialize election structure in Google Sheets
-- `$ python vaalilakanabot.py`
+- Run the bot: `vaalilakanabot` (or `python vaalilakanabot.py`)
 - Add the bot to relevant discussion groups.
 
 ## Running the bot with Docker
@@ -221,7 +224,7 @@ The bot creates and manages 4 worksheets in your Google Sheets document:
 | C      | Division_EN | Division name in English                         |
 | D      | Role_FI     | Role name in Finnish                             |
 | E      | Role_EN     | Role name in English                             |
-| F      | Type        | Role type (BOARD, ELECTED, NON-ELECTED, AUDITOR) |
+| F      | Type        | Role type (BOARD, ELECTED, NON_ELECTED, AUDITOR) |
 | G      | Amount      | Number of positions available                    |
 | H      | Deadline    | Application deadline (dd.mm. format)             |
 

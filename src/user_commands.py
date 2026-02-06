@@ -1,10 +1,12 @@
 """User commands and basic functionality."""
 
 import logging
+from typing import Dict, List, Union
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from .types import ApplicationRow, ElectionStructureRow
 from .utils import (
     vaalilakana_to_string,
     send_sticker,
@@ -16,8 +18,11 @@ from .sheets_data_manager import DataManager
 logger = logging.getLogger("vaalilakanabot")
 
 
-async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
+async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     """Show help information for users in English."""
+    message = update.message
+    if message is None:
+        return
     try:
         help_text = """
 🤖 <b>Vaalilakanabot - User Commands</b>
@@ -54,13 +59,16 @@ async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 Need help? Contact the board!
         """
 
-        await update.message.reply_html(help_text)
+        await message.reply_html(help_text)
     except Exception as e:
         logger.error(e)
 
 
-async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
+async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     """Show help information for users in Finnish."""
+    message = update.message
+    if message is None:
+        return
     try:
         help_text = """
 🤖 <b>Vaalilakanabot - Käyttäjän komennot</b>
@@ -97,85 +105,94 @@ async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 Tarvitsetko apua? Ota yhteyttä raatiin!
         """
 
-        await update.message.reply_html(help_text)
+        await message.reply_html(help_text)
     except Exception as e:
         logger.error(e)
 
 
-async def register_channel(update: Update, data_manager: DataManager):
+async def register_channel(update: Update, data_manager: DataManager) -> None:
     """Register a channel for announcements."""
+    message = update.message
+    if message is None:
+        return
     try:
-        chat_id = update.message.chat.id
+        chat_id = message.chat.id
         data_manager.add_channel(chat_id)
-        await update.message.reply_text(
+        await message.reply_text(
             "Registered as Vaalilakanabot announcement channel!"
         )
     except Exception as e:
         logger.error(e)
 
 
-async def unregister_channel(update: Update, data_manager: DataManager):
+async def unregister_channel(update: Update, data_manager: DataManager) -> None:
     """Unregister a channel from announcements."""
+    message = update.message
+    if message is None:
+        return
     try:
-        chat_id = update.message.chat.id
+        chat_id = message.chat.id
         removed = data_manager.remove_channel(chat_id)
         if removed:
-            await update.message.reply_text(
+            await message.reply_text(
                 "Channel removed from Vaalilakanabot announcement channels!"
             )
         else:
-            await update.message.reply_text(
+            await message.reply_text(
                 "Channel not found in registered announcement channels."
             )
     except Exception as e:
         logger.error(e)
 
 
-def _render_applications(roles, app_rows, is_finnish: bool) -> str:
-    role_by_id = {role.get("ID"): role for role in roles if role.get("ID")}
+def _format_one_application(
+    app: ApplicationRow,
+    role_data: Union[Dict[str, object], ElectionStructureRow],
+    is_finnish: bool,
+) -> str:
+    """Format a single application block for display."""
+    role_fi = role_data.get("Role_FI", app.get("Role_ID", "Tuntematon rooli"))
+    role_en = role_data.get("Role_EN", "")
+    division_fi = role_data.get("Division_FI", "")
+    division_en = role_data.get("Division_EN", "")
+    status = map_application_status(app.get("Status", "PENDING"), is_finnish)
+    block = f"• <b>{role_fi if is_finnish else (role_en or role_fi)}</b>\n"
+    if division_fi:
+        div_label = get_translation("division_label", is_finnish)
+        div_name = division_fi if is_finnish else (division_en or division_fi)
+        block += f"  <b>{div_label}:</b> {div_name}\n"
+    block += f"  <b>{get_translation('status_label', is_finnish)}:</b> {status}\n"
+    fiirumi = app.get("Fiirumi_Post", "")
+    if fiirumi:
+        block += f'  <b>{get_translation("fiirumi_label", is_finnish)}:</b> <a href="{fiirumi}">link</a>\n'
+    return block + "\n"
 
+
+def _render_applications(
+    roles: List[ElectionStructureRow],
+    app_rows: List[ApplicationRow],
+    is_finnish: bool,
+) -> str:
+    role_by_id: Dict[str, ElectionStructureRow] = {
+        role.get("ID", ""): role for role in roles if role.get("ID")
+    }
     text = get_translation("my_applications", is_finnish)
+    empty_role: Dict[str, object] = {}
     for app in app_rows:
-        r = role_by_id.get(app.get("Role_ID"), {})
-        role_fi = r.get("Role_FI", app.get("Role_ID", "Tuntematon rooli"))
-        role_en = r.get("Role_EN", "")
-        division_fi = r.get("Division_FI", "")
-        division_en = r.get("Division_EN", "")
-        fiirumi = app.get("Fiirumi_Post", "")
-        status = map_application_status(app.get("Status", "PENDING"), is_finnish)
-
-        # Title
-        if is_finnish:
-            text += f"• <b>{role_fi}</b>\n"
-        else:
-            title = role_en or role_fi
-            text += f"• <b>{title}</b>\n"
-
-        # Division
-        if division_fi:
-            division_label = get_translation("division_label", is_finnish)
-            division_name = division_fi if is_finnish else (division_en or division_fi)
-            text += f"  <b>{division_label}:</b> {division_name}\n"
-
-        # Status
-        status_label = get_translation("status_label", is_finnish)
-        text += f"  <b>{status_label}:</b> {status}\n"
-
-        # Fiirumi link
-        if fiirumi:
-            fiirumi_label = get_translation("fiirumi_label", is_finnish)
-            text += f'  <b>{fiirumi_label}:</b> <a href="{fiirumi}">link</a>\n'
-
-        text += "\n"
+        r = role_by_id.get(app.get("Role_ID", ""), empty_role)
+        text += _format_one_application(app, r, is_finnish)
     return text
 
 
-async def applications_en(update: Update, data_manager: DataManager):
+async def applications_en(update: Update, data_manager: DataManager) -> None:
     """Show the current user's applications (English)."""
+    message = update.message
+    if message is None or update.effective_user is None:
+        return
     try:
         user_id = update.effective_user.id
         if not data_manager.sheets_manager.get_user_by_telegram_id(user_id):
-            await update.message.reply_text(
+            await message.reply_text(
                 get_translation("please_register_first", is_finnish=False)
             )
             return
@@ -183,44 +200,49 @@ async def applications_en(update: Update, data_manager: DataManager):
         # Fetch user's application rows
         app_rows = data_manager.get_applications_for_user(user_id)
         if not app_rows:
-            await update.message.reply_text(
+            await message.reply_text(
                 get_translation("no_applications", is_finnish=False)
             )
             return
 
         roles = data_manager.get_all_roles()
         text = _render_applications(roles, app_rows, is_finnish=False)
-        await update.message.reply_html(text, disable_web_page_preview=True)
+        await message.reply_html(text, disable_web_page_preview=True)
     except Exception as e:
         logger.error(e)
 
 
-async def applications(update: Update, data_manager: DataManager):
+async def applications(update: Update, data_manager: DataManager) -> None:
     """Näytä käyttäjän omat hakemukset (suomeksi)."""
+    message = update.message
+    if message is None or update.effective_user is None:
+        return
     try:
         user_id = update.effective_user.id
         if not data_manager.sheets_manager.get_user_by_telegram_id(user_id):
-            await update.message.reply_text(
+            await message.reply_text(
                 get_translation("please_register_first", is_finnish=True)
             )
             return
 
         app_rows = data_manager.get_applications_for_user(user_id)
         if not app_rows:
-            await update.message.reply_text(
+            await message.reply_text(
                 get_translation("no_applications", is_finnish=True)
             )
             return
 
         roles = data_manager.get_all_roles()
         text = _render_applications(roles, app_rows, is_finnish=True)
-        await update.message.reply_html(text, disable_web_page_preview=True)
+        await message.reply_html(text, disable_web_page_preview=True)
     except Exception as e:
         logger.error(e)
 
 
-async def show_election_sheet(update: Update, data_manager: DataManager):
+async def show_election_sheet(update: Update, data_manager: DataManager) -> None:
     """Show the current vaalilakana."""
+    if update.message is None:
+        return
     try:
         vaalilakana_text = vaalilakana_to_string(data_manager.vaalilakana, "fi")
         await update.message.reply_html(
@@ -231,11 +253,14 @@ async def show_election_sheet(update: Update, data_manager: DataManager):
         logger.error(e)
 
 
-async def show_election_sheet_en(update: Update, data_manager: DataManager):
+async def show_election_sheet_en(update: Update, data_manager: DataManager) -> None:
     """Show the current election sheet in English."""
+    message = update.message
+    if message is None:
+        return
     try:
         election_sheet_text = vaalilakana_to_string(data_manager.vaalilakana, "en")
-        await update.message.reply_html(
+        await message.reply_html(
             election_sheet_text,
             disable_web_page_preview=True,
         )
@@ -243,31 +268,31 @@ async def show_election_sheet_en(update: Update, data_manager: DataManager):
         logger.error(e)
 
 
-async def jauhis(update: Update, _: ContextTypes.DEFAULT_TYPE):
+async def jauhis(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     """Send jauhis sticker."""
     await send_sticker(update, "jauhis")
 
 
-async def jauh(update: Update, _: ContextTypes.DEFAULT_TYPE):
+async def jauh(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     """Send jauh sticker."""
     await send_sticker(update, "jauh")
 
 
-async def jauho(update: Update, _: ContextTypes.DEFAULT_TYPE):
+async def jauho(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     """Send jauho sticker."""
     await send_sticker(update, "jauho")
 
 
-async def lauh(update: Update, _: ContextTypes.DEFAULT_TYPE):
+async def lauh(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     """Send lauh sticker."""
     await send_sticker(update, "lauh")
 
 
-async def mauh(update: Update, _: ContextTypes.DEFAULT_TYPE):
+async def mauh(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     """Send mauh sticker."""
     await send_sticker(update, "mauh")
 
 
-async def yauh(update: Update, _: ContextTypes.DEFAULT_TYPE):
+async def yauh(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     """Send yauh sticker."""
     await send_sticker(update, "yauh")

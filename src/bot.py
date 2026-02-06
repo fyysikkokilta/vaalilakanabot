@@ -3,6 +3,7 @@
 import datetime
 import logging
 import sys
+from typing import Any, Dict, List
 
 from telegram import Update
 from telegram.ext import (
@@ -77,7 +78,7 @@ from .fiirumi_area_generator import should_generate_areas, generate_election_are
 logger = logging.getLogger("vaalilakanabot")
 
 
-def setup_logging():
+def setup_logging() -> None:
     """Setup logging configuration."""
     logger.setLevel(logging.INFO)
     fh = logging.StreamHandler(sys.stdout)
@@ -89,14 +90,14 @@ def setup_logging():
     logger.addHandler(fh)
 
 
-async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def error(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log Errors caused by Updates."""
     logger.warning("Update '%s' caused error '%s'", update, context.error)
 
 
 async def process_application_queue(
     _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
-):
+) -> None:
     """Flush queued applications, status updates, channel operations, and user operations to Google Sheets."""
     try:
         # First flush user operations (users should exist before applications reference them)
@@ -134,12 +135,14 @@ async def process_application_queue(
         logger.error("Error in queue processing job: %s", e)
 
 
-async def post_init(app: Application, data_manager: DataManager):
+async def post_init(
+    app: Application[Any, Any, Any, Any, Any, Any], data_manager: DataManager
+) -> None:
     """Post initialization setup."""
     app.bot_data["data_manager"] = data_manager
 
     # Generate election areas if configured for current year
-    if should_generate_areas(ELECTION_YEAR):
+    if should_generate_areas(ELECTION_YEAR) and ELECTION_YEAR is not None:
         logger.info("Generating election areas for year %s", ELECTION_YEAR)
         generate_election_areas(ELECTION_YEAR)
     else:
@@ -266,7 +269,7 @@ async def post_init(app: Application, data_manager: DataManager):
         )
     )
 
-    application_states = {
+    application_states: Dict[object, List[Any]] = {
         SELECTING_DIVISION: [
             CallbackQueryHandler(
                 lambda update, ctx: select_division(update, ctx, data_manager)
@@ -331,7 +334,7 @@ async def post_init(app: Application, data_manager: DataManager):
     app.add_handler(apply_handler)
 
     # Register conversation (user info for applications)
-    register_states = {
+    register_states: Dict[object, List[Any]] = {
         REGISTER_NAME: [
             MessageHandler(filters.TEXT & (~filters.COMMAND), register_name)
         ],
@@ -363,12 +366,12 @@ async def post_init(app: Application, data_manager: DataManager):
     )
     app.add_handler(register_handler)
 
-    app.add_error_handler(error)
+    app.add_error_handler(error)  # type: ignore[arg-type]
 
     logger.info("Post init done.")
 
 
-def main():
+def main() -> None:
     """Main function to run the bot."""
     setup_logging()
 

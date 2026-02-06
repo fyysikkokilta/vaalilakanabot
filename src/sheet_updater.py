@@ -2,12 +2,12 @@
 
 import logging
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 import requests
 from telegram.ext import ContextTypes
 
 from .sheets_data_manager import DataManager
-from .types import DivisionData
+from .types import DivisionData, RoleData
 from .config import API_KEY, API_USERNAME, VAALILAKANA_POST_URL
 
 YEAR = datetime.now().year
@@ -26,7 +26,8 @@ def get_current_post_content() -> Optional[str]:
         response = requests.get(VAALILAKANA_POST_URL, headers=headers, timeout=30)
         response.raise_for_status()
         data = response.json()
-        return data.get("raw", "")
+        raw = data.get("raw", "")
+        return cast(Optional[str], raw)
     except Exception as e:
         logger.error("Error fetching current post content: %s", e)
         return None
@@ -46,84 +47,69 @@ def extract_preamble_and_content(full_text: str) -> Tuple[str, bool]:
     return "", False
 
 
+def _format_role_md(role_data: RoleData) -> str:
+    """Format a single role and its applicants as markdown."""
+    role_title = role_data.get("Role_FI")
+    role_title_en = role_data.get("Role_EN")
+    role_tag = (
+        "**"
+        if role_data.get("Type") == "BOARD"
+        else ("*" if role_data.get("Type") in ("ELECTED", "AUDITOR") else None)
+    )
+    parts: List[str] = []
+    if role_tag:
+        parts.append(role_tag)
+    if role_title != role_title_en and role_title and role_title_en:
+        parts.append(f"{role_title} / {role_title_en}")
+    elif role_title:
+        parts.append(role_title)
+    else:
+        parts.append(role_title_en or "")
+    if role_data.get("Amount"):
+        parts.append(f" ({role_data.get('Amount')})")
+    if role_data.get("Deadline"):
+        parts.append(f" {role_data.get('Deadline')}")
+    if role_tag:
+        parts.append(role_tag)
+    text = "".join(parts) + "\n"
+    for applicant in role_data.get("Applicants", []):
+        name = applicant.get("Name")
+        fiirumi_post = applicant.get("Fiirumi_Post", "")
+        status = applicant.get("Status", "")
+        line = "* "
+        if status == "ELECTED":
+            line += "**"
+        line += f"[{name}]({fiirumi_post})" if fiirumi_post else str(name or "")
+        if status == "ELECTED":
+            line += "**"
+        text += line + "\n"
+    if role_data.get("Applicants"):
+        text += "\n"
+    return text + "\n"
+
+
+def _format_division_md(division_data: DivisionData) -> str:
+    """Format a division and its roles as markdown."""
+    div_fi = division_data.get("Division_FI")
+    div_en = division_data.get("Division_EN")
+    text = f"### {div_fi} / {div_en}\n\n"
+    for role_data in division_data.get("Roles", []):
+        text += _format_role_md(role_data)
+    return text + "—\n\n"
+
+
 def data_to_markdown(data: List[DivisionData]) -> str:
     """Convert data to markdown."""
-    # Start building the markdown
     text = f"# VAALILAKANA {YEAR} / ELECTION SHEET {YEAR}\n\n"
-
-    # Iterate over each division
     for division_data in data:
-        division_name = division_data.get("Division_FI")
-        division_name_en = division_data.get("Division_EN")
-
-        # Add division header
-        text += f"### {division_name} / {division_name_en}\n\n"
-
-        # Iterate over each role in the division
-        for role_data in division_data.get("Roles", []):
-            role_title = role_data.get("Role_FI")
-            role_title_en = role_data.get("Role_EN")
-            role_amount = role_data.get("Amount")
-            role_application_dl = role_data.get("Deadline")
-            role_applicants = role_data.get("Applicants", [])
-            role_tag = None
-
-            # Determine if the role is a board role or official role
-            if role_data.get("Type") == "BOARD":
-                role_tag = "**"
-            elif role_data.get("Type") in ("ELECTED", "AUDITOR"):
-                role_tag = "*"
-
-            role_row = ""
-            if role_tag:
-                role_row += role_tag
-            if role_title != role_title_en and role_title and role_title_en:
-                role_row += f"{role_title} / {role_title_en}"
-            elif role_title:
-                role_row += f"{role_title}"
-            else:
-                role_row += f"{role_title_en}"
-            if role_amount:
-                role_row += f" ({role_amount})"
-            if role_application_dl:
-                role_row += f" {role_application_dl}"
-            if role_tag:
-                role_row += role_tag
-            role_row += "\n"
-            text += role_row
-
-            # Add applicants list
-            if len(role_applicants) > 0:
-                text += "\n"
-                for applicant in role_applicants:
-                    applicant_name = applicant.get("Name")
-                    fiirumi_post = applicant.get("Fiirumi_Post", "")
-                    status = applicant.get("Status", "")
-
-                    applicant_row = "* "
-
-                    if status == "ELECTED":
-                        applicant_row += "**"
-                    if fiirumi_post:
-                        applicant_row += f"[{applicant_name}]({fiirumi_post})"
-                    else:
-                        applicant_row += f"{applicant_name}"
-                    if status == "ELECTED":
-                        applicant_row += "**"
-                    applicant_row += "\n"
-                    text += applicant_row
-                text += "\n"
-
-            text += "\n"
-
-        text += "—\n\n"
+        text += _format_division_md(division_data)
 
     return text
 
 
 async def update_election_sheet(
     _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
-):
+) -> Optional[requests.Response]:
     """Update the election sheet in the Guild website.
 
     Preserves any preamble text above the SHEET_MARKER if it exists.
@@ -145,7 +131,9 @@ async def update_election_sheet(
     if current_content:
         preamble, has_marker = extract_preamble_and_content(current_content)
         if has_marker:
-            logger.info("Found preamble marker, preserving preamble (%d chars)", len(preamble))
+            logger.info(
+                "Found preamble marker, preserving preamble (%d chars)", len(preamble)
+            )
         elif preamble:
             # If there's content but no marker found, don't preserve anything
             # to avoid accidentally preserving old sheet data as preamble

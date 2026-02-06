@@ -3,19 +3,18 @@
 import logging
 import os
 import uuid
-import time
 from datetime import datetime
-from typing import Dict, List, Optional, Callable, TypeVar, Any
+from typing import Any, Dict, List, Optional, Tuple, cast
 from collections import deque
-from functools import wraps
 from cachetools import cached, TTLCache
 import gspread
 from google.oauth2.service_account import Credentials
-from gspread.exceptions import APIError
+from .utils import retry_on_api_error
 from .types import (
     ApplicationRow,
-    ChannelRow,
     DivisionData,
+    ApplicationStatus,
+    ChannelRow,
     ElectionStructureRow,
     DivisionDict,
     RoleData,
@@ -32,78 +31,23 @@ _applications_cache = TTLCache(maxsize=1, ttl=300)
 _channels_cache = TTLCache(maxsize=1, ttl=300)
 _users_cache = TTLCache(maxsize=1, ttl=300)
 
-# Persistent storage for last known good values
-_last_known_roles: Optional[List[ElectionStructureRow]] = None
-_last_known_applications: Optional[List[ApplicationRow]] = None
-_last_known_channels: Optional[List[ChannelRow]] = None
-_last_known_users: Optional[List[UserRow]] = None
-
-T = TypeVar("T")
-
-
-def retry_on_api_error(max_retries: int = 3, backoff_factor: float = 2.0):
-    """Decorator to retry API calls with exponential backoff on 503 errors."""
-
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        def wrapper(*args, **kwargs) -> T:
-            last_exception = None
-            for attempt in range(max_retries):
-                try:
-                    return func(*args, **kwargs)
-                except APIError as e:
-                    last_exception = e
-                    # Check if it's a 503 or other retryable error
-                    if hasattr(e, "response") and hasattr(e.response, "status_code"):
-                        status_code = e.response.status_code
-                    else:
-                        # Try to extract status code from error message
-                        error_str = str(e)
-                        if "503" in error_str:
-                            status_code = 503
-                        else:
-                            # For other API errors, don't retry
-                            raise
-
-                    if status_code in (429, 500, 502, 503, 504):
-                        # Retryable errors
-                        wait_time = backoff_factor**attempt
-                        logger.warning(
-                            "API error %s in %s (attempt %d/%d), retrying in %.1fs: %s",
-                            status_code,
-                            func.__name__,
-                            attempt + 1,
-                            max_retries,
-                            wait_time,
-                            e,
-                        )
-                        time.sleep(wait_time)
-                    else:
-                        # Non-retryable error, raise immediately
-                        raise
-                except Exception as e:
-                    # For non-API errors, log and raise
-                    logger.error("Non-retryable error in %s: %s", func.__name__, e)
-                    raise
-
-            # All retries exhausted
-            logger.error(
-                "All %d retry attempts exhausted for %s, last error: %s",
-                max_retries,
-                func.__name__,
-                last_exception,
-            )
-            raise last_exception
-
-        return wrapper
-
-    return decorator
+# Persistent storage for last known good values (mutate in place to avoid global statement)
+_fallback_cache: Dict[str, Any] = {
+    "roles": None,
+    "applications": None,
+    "channels": None,
+    "users": None,
+}
 
 
-class SheetsManager:  # pylint: disable=too-many-public-methods
+class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instance-attributes
     """Manages Google Sheets operations for election data."""
 
-    def __init__(self, sheet_url: str = None, credentials_file: str = None):
+    def __init__(
+        self,
+        sheet_url: Optional[str] = None,
+        credentials_file: Optional[str] = None,
+    ) -> None:
         """Initialize Google Sheets connection."""
 
         self.sheet_url = sheet_url or GOOGLE_SHEET_URL
@@ -121,18 +65,18 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             "https://www.googleapis.com/auth/drive",
         ]
 
-        self.client = None
-        self.spreadsheet = None
-        self.election_sheet = None
-        self.applications_sheet = None
-        self.channels_sheet = None
-        self.users_sheet = None
+        self.client: Any = None
+        self.spreadsheet: Any = None
+        self.election_sheet: Any = None
+        self.applications_sheet: Any = None
+        self.channels_sheet: Any = None
+        self.users_sheet: Any = None
 
         # Application queue for batching
         self.application_queue: deque[ApplicationRow] = deque()
 
         # Status update queue for batching (processed after application queue)
-        self.status_update_queue: deque[ApplicationRow] = deque()
+        self.status_update_queue: deque[Dict[str, Any]] = deque()
 
         # Channel operation queues for batching
         self.channel_add_queue: deque[int] = deque()
@@ -143,7 +87,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
         self._connect()
 
-    def _connect(self):
+    def _connect(self) -> None:
         """Establish connection to Google Sheets."""
         try:
             if not os.path.exists(self.credentials_file):
@@ -152,7 +96,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 )
 
             # Use service account credentials file
-            creds = Credentials.from_service_account_file(
+            creds: Credentials = Credentials.from_service_account_file(  # type: ignore[no-untyped-call]
                 self.credentials_file, scopes=self.scopes
             )
 
@@ -168,7 +112,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             logger.error("Failed to connect to Google Sheets: %s", e)
             raise
 
-    def _setup_worksheets(self):
+    def _setup_worksheets(self) -> None:
         """Set up required worksheets with proper headers."""
         # Get or create Election Structure sheet
         try:
@@ -238,97 +182,100 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             ]
             self.users_sheet.update("A1:F1", [headers])
 
-    def invalidate_caches(self):
+    def invalidate_caches(self) -> None:
         """Invalidate all caches."""
         _roles_cache.clear()
         _applications_cache.clear()
         _channels_cache.clear()
         _users_cache.clear()
+        for key in _fallback_cache:
+            _fallback_cache[key] = None
 
     @retry_on_api_error(max_retries=3, backoff_factor=2.0)
-    def _get_all_values_with_retry(self, worksheet) -> List[List[Any]]:
+    def _get_all_values_with_retry(self, worksheet: Any) -> List[List[Any]]:
         """Get all values from a worksheet with retry logic."""
-        return worksheet.get_all_values()
+        return cast(List[List[Any]], worksheet.get_all_values())
 
     @retry_on_api_error(max_retries=3, backoff_factor=2.0)
-    def _get_all_records_with_retry(self, worksheet) -> List[Dict[str, Any]]:
+    def _get_all_records_with_retry(self, worksheet: Any) -> List[Dict[str, Any]]:
         """Get all records from a worksheet with retry logic."""
-        return worksheet.get_all_records()
+        return cast(List[Dict[str, Any]], worksheet.get_all_records())
 
     @retry_on_api_error(max_retries=3, backoff_factor=2.0)
     def _batch_update_with_retry(
-        self, worksheet, updates: List[Dict[str, Any]]
+        self, worksheet: Any, updates: List[Dict[str, Any]]
     ) -> None:
         """Perform batch update on a worksheet with retry logic."""
         worksheet.batch_update(updates)
 
     @retry_on_api_error(max_retries=3, backoff_factor=2.0)
     def _update_with_retry(
-        self, worksheet, range_str: str, values: List[List[Any]]
+        self, worksheet: Any, range_str: str, values: List[List[Any]]
     ) -> None:
         """Perform update on a worksheet with retry logic."""
         worksheet.update(range_str, values)
 
     @retry_on_api_error(max_retries=3, backoff_factor=2.0)
-    def _delete_rows_with_retry(self, worksheet, row_index: int) -> None:
+    def _delete_rows_with_retry(self, worksheet: Any, row_index: int) -> None:
         """Delete a row from a worksheet with retry logic."""
         worksheet.delete_rows(row_index)
 
-    @cached(cache=_roles_cache)
-    def get_all_roles(self) -> List[ElectionStructureRow]:
-        """Get all roles with caching and ensure IDs exist when cache refreshes.
-        Also ensures that every role has a unique ID."""
-        global _last_known_roles
+    def _collect_missing_role_id_updates(
+        self, all_values: List[List[Any]], headers: List[Any]
+    ) -> List[Dict[str, Any]]:
+        """Build batch updates for role rows that are missing an ID."""
+        id_col = headers.index("ID") + 1
+        div_fi_col = headers.index("Division_FI") + 1
+        role_fi_col = headers.index("Role_FI") + 1
+        updates = []
+        for row_idx, row in enumerate(all_values[1:], start=2):
+            id_val = row[id_col - 1] if len(row) >= id_col else ""
+            if not id_val:
+                div_fi = row[div_fi_col - 1] if len(row) >= div_fi_col else ""
+                role_fi = row[role_fi_col - 1] if len(row) >= role_fi_col else ""
+                if div_fi and role_fi:
+                    updates.append(
+                        {
+                            "range": f"{chr(64 + id_col)}{row_idx}",
+                            "values": [[str(uuid.uuid4())]],
+                        }
+                    )
+        return updates
 
+    @cached(cache=_roles_cache)  # type: ignore[untyped-decorator]
+    def get_all_roles(self) -> List[ElectionStructureRow]:
+        """Get all roles with caching and ensure IDs exist when cache refreshes."""
+        if self.election_sheet is None:
+            return []
         try:
-            all_values = self._get_all_values_with_retry(self.election_sheet)
+            all_values: List[List[Any]] = self._get_all_values_with_retry(
+                self.election_sheet
+            )
             if not all_values:
-                # If we get empty data but have a cached version, use that
-                if _last_known_roles:
+                fallback_roles = _fallback_cache.get("roles")
+                if fallback_roles:
                     logger.warning("Empty data from sheets, using last known roles")
-                    return _last_known_roles
+                    return cast(List[ElectionStructureRow], fallback_roles)
                 return []
 
             headers = all_values[0]
-            id_col = headers.index("ID") + 1
-            div_fi_col = headers.index("Division_FI") + 1
-            role_fi_col = headers.index("Role_FI") + 1
-
-            # Collect all missing IDs for bulk update
-            updates = []
-            for row_idx, row in enumerate(all_values[1:], start=2):
-                id_val = row[id_col - 1] if len(row) >= id_col else ""
-                if not id_val:
-                    division_fi = row[div_fi_col - 1] if len(row) >= div_fi_col else ""
-                    role_fi = row[role_fi_col - 1] if len(row) >= role_fi_col else ""
-                    if division_fi and role_fi:
-                        new_id = str(uuid.uuid4())
-                        # Store the cell reference and new ID for bulk update
-                        updates.append(
-                            {
-                                "range": f"{chr(64 + id_col)}{row_idx}",  # Convert column number to letter
-                                "values": [[new_id]],
-                            }
-                        )
-
-            # Perform bulk update if there are missing IDs
+            updates = self._collect_missing_role_id_updates(all_values, headers)
             if updates:
                 self._batch_update_with_retry(self.election_sheet, updates)
                 logger.info("Assigned IDs to %s role rows without IDs", len(updates))
 
-            result = self._get_all_records_with_retry(self.election_sheet)
-
-            # Persist last known good value
-            _last_known_roles = result
-
-            return result
+            result: List[Dict[str, Any]] = self._get_all_records_with_retry(
+                self.election_sheet
+            )
+            _fallback_cache["roles"] = result
+            return cast(List[ElectionStructureRow], result)
 
         except Exception as e:
             logger.error("Error getting roles: %s", e)
-            # Return last known good value if available
-            if _last_known_roles:
+            fallback_val = _fallback_cache.get("roles")
+            if fallback_val:
                 logger.warning("Returning last known roles due to error")
-                return _last_known_roles
+                return cast(List[ElectionStructureRow], fallback_val)
             return []
 
     def get_divisions(self) -> List[DivisionDict]:
@@ -355,32 +302,31 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
         for role in all_roles:
             if role_name in (role.get("Role_FI"), role.get("Role_EN")):
                 return role
-
         return None
 
     def get_role_by_id(self, role_id: str) -> Optional[ElectionStructureRow]:
         """Get a role by ID using cached roles."""
         all_roles = self.get_all_roles()
-        return next((role for role in all_roles if role.get("ID") == role_id), None)
+        found = next((role for role in all_roles if role.get("ID") == role_id), None)
+        return found
 
-    @cached(cache=_applications_cache)
+    @cached(cache=_applications_cache)  # type: ignore[untyped-decorator]
     def get_all_applications_from_sheets(self) -> List[ApplicationRow]:
         """Get all applications with caching (1 minute TTL)."""
-        global _last_known_applications
-
+        if self.applications_sheet is None:
+            return []
         try:
-            result = self._get_all_records_with_retry(self.applications_sheet)
-
-            # Persist last known good value
-            _last_known_applications = result
-
-            return result
+            result: List[Dict[str, Any]] = self._get_all_records_with_retry(
+                self.applications_sheet
+            )
+            _fallback_cache["applications"] = result
+            return cast(List[ApplicationRow], result)
         except Exception as e:
             logger.error("Error getting all applications: %s", e)
-            # Return last known good value if available
-            if _last_known_applications:
+            fallback_val = _fallback_cache.get("applications")
+            if fallback_val:
                 logger.warning("Returning last known applications due to error")
-                return _last_known_applications
+                return cast(List[ApplicationRow], fallback_val)
             return []
 
     def get_all_applications(self) -> List[ApplicationRow]:
@@ -403,11 +349,15 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                         and app.get("Status") not in ("DENIED", "REMOVED")
                     ):
                         if status_update.get("Status") is not None:
-                            app["Status"] = status_update.get("Status")
+                            app["Status"] = cast(
+                                ApplicationStatus, status_update.get("Status")
+                            )
                         if status_update.get("Fiirumi_Post") is not None:
-                            app["Fiirumi_Post"] = status_update.get("Fiirumi_Post")
+                            app["Fiirumi_Post"] = cast(
+                                str, status_update.get("Fiirumi_Post")
+                            )
                         if status_update.get("Group_ID") is not None:
-                            app["Group_ID"] = status_update.get("Group_ID")
+                            app["Group_ID"] = cast(str, status_update.get("Group_ID"))
                         break
 
             return all_applications
@@ -450,13 +400,16 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
     def flush_application_queue(self) -> bool:
         """Flush all queued applications to Google Sheets in a single batch operation."""
+        if self.applications_sheet is None:
+            return False
+        applications_to_add: List[ApplicationRow] = []
         try:
             if not self.application_queue:
                 logger.debug("No applications in queue to flush")
                 return True
 
             # Convert queue to list and clear queue
-            applications_to_add = list(self.application_queue)
+            applications_to_add = list[ApplicationRow](self.application_queue)
             self.application_queue.clear()
 
             if len(applications_to_add) == 0:
@@ -467,7 +420,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             start_row = len(self.applications_sheet.col_values(1)) + 1
 
             # Prepare batch data
-            batch_data = []
+            batch_data: List[List[Any]] = []
             for app in applications_to_add:
                 row_data = [
                     app.get("Timestamp"),
@@ -500,22 +453,18 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             return False
 
     def update_application_status(
-        self,
-        role_id: str,
-        telegram_id: int,
-        status: str = None,
-        fiirumi_post: str = None,
-        group_id: str = None,
+        self, role_id: str, telegram_id: int, **kwargs: Any
     ) -> bool:
-        """Queue an application status update for batch processing."""
+        """Queue an application status update. kwargs: status, fiirumi_post, group_id."""
+        status = kwargs.get("status")
+        fiirumi_post = kwargs.get("fiirumi_post")
+        group_id = kwargs.get("group_id")
         try:
-            # Check if there's already an update for this application in the queue
             for queued_update in self.status_update_queue:
                 if (
                     queued_update.get("Role_ID") == role_id
                     and queued_update.get("Telegram_ID") == telegram_id
                 ):
-                    # Update existing queue entry
                     if status is not None:
                         queued_update["Status"] = status
                     if fiirumi_post is not None:
@@ -529,7 +478,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     )
                     return True
 
-            # Add new status update to queue (partial update dict, not full ApplicationRow)
             status_update = {
                 "Role_ID": role_id,
                 "Telegram_ID": telegram_id,
@@ -538,7 +486,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 "Group_ID": group_id or "",
             }
             self.status_update_queue.append(status_update)
-
             logger.info(
                 "Queued status update for role %s, user %s",
                 role_id,
@@ -550,112 +497,123 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             logger.error("Error queueing status update: %s", e)
             return False
 
+    def _row_updates_for_status_update(
+        self,
+        update_data: Dict[str, Any],
+        all_data: List[List[Any]],
+        headers: List[Any],
+    ) -> Tuple[List[Dict[str, Any]], bool]:
+        """Return (list of range/values updates for one row, found)."""
+        cols = {
+            k: headers.index(k) + 1
+            for k in ("Role_ID", "Telegram_ID", "Status", "Fiirumi_Post", "Group_ID")
+        }
+        role_id = update_data.get("Role_ID")
+        telegram_id = update_data.get("Telegram_ID")
+        status = update_data.get("Status")
+        fiirumi_post = update_data.get("Fiirumi_Post")
+        group_id = update_data.get("Group_ID")
+        for i, row in enumerate(all_data[1:], start=2):
+            if (
+                len(row) > max(cols["Role_ID"], cols["Telegram_ID"]) - 1
+                and row[cols["Role_ID"] - 1] == role_id
+                and str(row[cols["Telegram_ID"] - 1]) == str(telegram_id)
+                and row[cols["Status"] - 1] not in ("DENIED", "REMOVED")
+            ):
+                out = []
+                if status is not None:
+                    out.append(
+                        {
+                            "range": f"{chr(64 + cols['Status'])}{i}",
+                            "values": [[status]],
+                        }
+                    )
+                if fiirumi_post is not None:
+                    out.append(
+                        {
+                            "range": f"{chr(64 + cols['Fiirumi_Post'])}{i}",
+                            "values": [[fiirumi_post]],
+                        }
+                    )
+                if group_id and group_id != "":
+                    out.append(
+                        {
+                            "range": f"{chr(64 + cols['Group_ID'])}{i}",
+                            "values": [[group_id]],
+                        }
+                    )
+                return out, True
+        logger.warning(
+            "Application not found for queued status update: role %s, user %s",
+            role_id,
+            telegram_id,
+        )
+        return [], False
+
+    def _compute_status_update_batch(
+        self,
+        all_data: List[List[Any]],
+        headers: List[Any],
+        updates_to_process: List[Dict[str, Any]],
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """Compute batch updates and processed count for status update queue flush."""
+        batch_updates = []
+        processed_count = 0
+        for update_data in updates_to_process:
+            row_updates, found = self._row_updates_for_status_update(
+                update_data, all_data, headers
+            )
+            batch_updates.extend(row_updates)
+            if found:
+                processed_count += 1
+        return batch_updates, processed_count
+
     def flush_status_update_queue(self) -> bool:
         """Flush all queued status updates to Google Sheets in a single batch operation."""
+        if self.applications_sheet is None:
+            return False
+        updates_to_process: List[Dict[str, Any]] = []
         try:
             if not self.status_update_queue:
                 logger.debug("No status updates in queue to flush")
                 return True
-
-            # Convert queue to list and clear queue
             updates_to_process = list(self.status_update_queue)
             self.status_update_queue.clear()
-
-            # Get current sheet data once with retry
-            all_data = self._get_all_values_with_retry(self.applications_sheet)
+            all_data: List[List[Any]] = self._get_all_values_with_retry(
+                self.applications_sheet
+            )
             headers = all_data[0]
-
-            # Find column indices
-            role_id_col = headers.index("Role_ID") + 1
-            telegram_id_col = headers.index("Telegram_ID") + 1
-            status_col = headers.index("Status") + 1
-            fiirumi_col = headers.index("Fiirumi_Post") + 1
-            group_id_col = headers.index("Group_ID") + 1
-
-            # Prepare batch updates
-            batch_updates = []
-            processed_count = 0
-
-            for update_data in updates_to_process:
-                role_id = update_data.get("Role_ID")
-                telegram_id = update_data.get("Telegram_ID")
-                status = update_data.get("Status")
-                fiirumi_post = update_data.get("Fiirumi_Post")
-                group_id = update_data.get("Group_ID")
-
-                # Find the row for this application (search from end to start)
-                row_found = False
-                # Reverse the enumeration to process from last row to first
-                for i, row in enumerate(all_data[1:], start=2):
-                    if (
-                        len(row) > max(role_id_col, telegram_id_col) - 1
-                        and row[role_id_col - 1] == role_id
-                        and str(row[telegram_id_col - 1]) == str(telegram_id)
-                        and row[status_col - 1] not in ("DENIED", "REMOVED")
-                    ):
-                        # Add updates for this row
-                        if status is not None:
-                            batch_updates.append(
-                                {
-                                    "range": f"{chr(64 + status_col)}{i}",
-                                    "values": [[status]],
-                                }
-                            )
-                        if fiirumi_post is not None:
-                            batch_updates.append(
-                                {
-                                    "range": f"{chr(64 + fiirumi_col)}{i}",
-                                    "values": [[fiirumi_post]],
-                                }
-                            )
-                        if group_id is not None and group_id != "":
-                            batch_updates.append(
-                                {
-                                    "range": f"{chr(64 + group_id_col)}{i}",
-                                    "values": [[group_id]],
-                                }
-                            )
-                        processed_count += 1
-                        row_found = True
-                        break
-
-                if not row_found:
-                    logger.warning(
-                        "Application not found for queued status update: role %s, user %s",
-                        role_id,
-                        telegram_id,
-                    )
-
-            # Perform batch update if there are any updates with retry
+            batch_updates, processed_count = self._compute_status_update_batch(
+                all_data, headers, updates_to_process
+            )
             if batch_updates:
                 self._batch_update_with_retry(self.applications_sheet, batch_updates)
-
             logger.info(
                 "Flushed %d status updates from queue to sheets", processed_count
             )
             return True
-
         except Exception as e:
             logger.error("Error flushing status update queue: %s", e)
-            # Re-queue the updates if they failed to flush
             for update_data in updates_to_process:
                 self.status_update_queue.append(update_data)
             return False
 
     def flush_channel_queue(self) -> bool:
         """Flush all queued channel operations to Google Sheets in batch operations."""
-        channels_to_add = []
-        channels_to_remove = []
+        if self.channels_sheet is None:
+            return False
+        channels_to_add: List[int] = []
+        channels_to_remove: List[int] = []
 
         try:
             # Process channel additions
             if self.channel_add_queue:
-                channels_to_add = list(self.channel_add_queue)
+                channels_to_add = list[int](self.channel_add_queue)
                 self.channel_add_queue.clear()
 
                 # Prepare batch data for additions
                 current_row = len(self.channels_sheet.col_values(1)) + 1
-                batch_data = []
+                batch_data: List[List[Any]] = []
 
                 for chat_id in channels_to_add:
                     batch_data.append([chat_id, datetime.now().isoformat()])
@@ -669,15 +627,19 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
 
             # Process channel removals
             if self.channel_remove_queue:
-                channels_to_remove = list(self.channel_remove_queue)
+                channels_to_remove = list[int](self.channel_remove_queue)
                 self.channel_remove_queue.clear()
 
                 # Get current sheet data with retry
-                all_data = self._get_all_values_with_retry(self.channels_sheet)
+                all_data: List[List[Any]] = self._get_all_values_with_retry(
+                    self.channels_sheet
+                )
 
                 # Find rows to delete (collect indices in reverse order)
-                rows_to_delete = []
-                for i, row in enumerate(all_data[1:], start=2):  # Start from row 2
+                rows_to_delete: List[int] = []
+                for i, row in enumerate[List[Any]](
+                    all_data[1:], start=2
+                ):  # Start from row 2
                     if (
                         len(row) > 0
                         and int(str(row[0]).replace("−", "-")) in channels_to_remove
@@ -701,129 +663,118 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                 self.channel_remove_queue.append(chat_id)
             return False
 
+    def _applicants_for_role_enriched(
+        self, role: ElectionStructureRow, all_applications: List[ApplicationRow]
+    ) -> List[Dict[str, Any]]:
+        """Return enriched and group-merged applicants for one role."""
+        raw = [
+            app
+            for app in all_applications
+            if app.get("Role_ID") == role.get("ID")
+            and app.get("Status", "PENDING") in ("APPROVED", "ELECTED")
+        ]
+        enriched: List[Dict[str, Any]] = []
+        for app in raw:
+            user = self.get_user_by_telegram_id(app.get("Telegram_ID"))
+            disp: Dict[str, Any] = dict(app)
+            disp["Name"] = user.get("Name", "") if user else app.get("Name", "")
+            disp["Email"] = user.get("Email", "") if user else app.get("Email", "")
+            disp["Telegram"] = (
+                user.get("Telegram", "") if user else app.get("Telegram", "")
+            )
+            enriched.append(disp)
+        by_group: Dict[str, List[Dict[str, Any]]] = {}
+        for eapp in enriched:
+            gid = (eapp.get("Group_ID") or "").strip()
+            key = gid if gid else f"_single_{eapp.get('Telegram_ID')}"
+            by_group.setdefault(key, []).append(eapp)
+        applicants: List[Dict[str, Any]] = []
+        for key, value in by_group.items():
+            group_apps = value
+            if len(group_apps) == 1:
+                applicants.append(group_apps[0])
+            else:
+                first = group_apps[0]
+                merged = dict[str, Any](first)
+                merged["Name"] = ", ".join(
+                    a.get("Name", "") or "(?)" for a in group_apps
+                )
+                merged["Fiirumi_Post"] = next(
+                    (
+                        a.get("Fiirumi_Post", "")
+                        for a in group_apps
+                        if a.get("Fiirumi_Post")
+                    ),
+                    first.get("Fiirumi_Post", ""),
+                )
+                applicants.append(merged)
+        return applicants
+
+    def _build_divisions_with_roles(
+        self,
+        roles: List[ElectionStructureRow],
+        all_applications: List[ApplicationRow],
+    ) -> List[DivisionData]:
+        """Build DivisionData list from roles and applications."""
+        divisions_dict: Dict[str, DivisionData] = {}
+        for role in roles:
+            div_fi = role.get("Division_FI")
+            div_en = role.get("Division_EN")
+            if div_fi not in divisions_dict:
+                divisions_dict[div_fi] = DivisionData(
+                    Division_FI=div_fi, Division_EN=div_en, Roles=[]
+                )
+            applicants = self._applicants_for_role_enriched(role, all_applications)
+            divisions_dict[div_fi]["Roles"].append(
+                RoleData(
+                    ID=role.get("ID", ""),
+                    Role_FI=role.get("Role_FI", ""),
+                    Role_EN=role.get("Role_EN", ""),
+                    Amount=role.get("Amount"),
+                    Deadline=role.get("Deadline"),
+                    Type=role.get("Type", "NON_ELECTED"),
+                    Applicants=cast(List[ApplicationRow], applicants),
+                    Division_FI=div_fi or "",
+                    Division_EN=div_en or "",
+                )
+            )
+        return list[DivisionData](divisions_dict.values())
+
     def get_election_data(self) -> List[DivisionData]:
         """Get election data structured for display/export."""
         try:
-            # Get all roles and applications
             roles = self.get_all_roles()
             all_applications = self.get_all_applications()
-
-            # Group by division using arrays
-            divisions_dict: Dict[str, DivisionData] = {}
-
-            for role in roles:
-                Division_FI = role.get("Division_FI")
-                Division_EN = role.get("Division_EN")
-
-                if Division_FI not in divisions_dict:
-                    divisions_dict[Division_FI] = DivisionData(
-                        Division_FI=Division_FI,
-                        Division_EN=Division_EN,
-                        Roles=[],
-                    )
-
-                # Get approved/elected applications for this role; enrich with user display info
-                raw_applicants = [
-                    app
-                    for app in all_applications
-                    if app.get("Role_ID") == role.get("ID")
-                    and app.get("Status", "PENDING") in ("APPROVED", "ELECTED")
-                ]
-                enriched = []
-                for app in raw_applicants:
-                    user = self.get_user_by_telegram_id(app.get("Telegram_ID"))
-                    disp = dict(app)
-                    disp["Name"] = user.get("Name", "") if user else app.get("Name", "")
-                    disp["Email"] = (
-                        user.get("Email", "") if user else app.get("Email", "")
-                    )
-                    disp["Telegram"] = (
-                        user.get("Telegram", "") if user else app.get("Telegram", "")
-                    )
-                    enriched.append(disp)
-
-                # Group by Group_ID so grouped applications appear on one line
-                by_group: Dict[str, List[dict]] = {}
-                for app in enriched:
-                    gid = app.get("Group_ID") or ""
-                    if gid and gid.strip():
-                        key = gid.strip()
-                    else:
-                        key = (
-                            f"_single_{app.get('Telegram_ID')}"  # unique per applicant
-                        )
-                    by_group.setdefault(key, []).append(app)
-
-                applicants = []
-                for group_apps in by_group.values():
-                    if len(group_apps) == 1:
-                        applicants.append(group_apps[0])
-                    else:
-                        # Merge into one display entry: names on same line
-                        first = group_apps[0]
-                        merged = dict(first)
-                        merged["Name"] = ", ".join(
-                            a.get("Name", "") or "(?)" for a in group_apps
-                        )
-                        # Use first non-empty Fiirumi_Post if any
-                        merged["Fiirumi_Post"] = next(
-                            (
-                                a.get("Fiirumi_Post", "")
-                                for a in group_apps
-                                if a.get("Fiirumi_Post")
-                            ),
-                            first.get("Fiirumi_Post", ""),
-                        )
-                        applicants.append(merged)
-
-                role_data = role.copy()
-                role_data["Applicants"] = applicants
-                divisions_dict[Division_FI]["Roles"].append(
-                    RoleData(
-                        ID=role_data.get("ID"),
-                        Role_FI=role_data.get("Role_FI"),
-                        Role_EN=role_data.get("Role_EN"),
-                        Amount=role_data.get("Amount"),
-                        Deadline=role_data.get("Deadline"),
-                        Type=role_data.get("Type"),
-                        Applicants=applicants,
-                        Division_FI=Division_FI,
-                        Division_EN=Division_EN,
-                    )
-                )
-
-            # Convert to array of divisions
-            return list(divisions_dict.values())
-
+            return self._build_divisions_with_roles(roles, all_applications)
         except Exception as e:
             logger.error("Error getting election data: %s", e)
             return []
 
     # Channel management methods
-    @cached(cache=_channels_cache)
+    @cached(cache=_channels_cache)  # type: ignore[untyped-decorator]
     def get_all_channels(self) -> List[ChannelRow]:
         """Get all registered channels."""
-        global _last_known_channels
-
+        if self.channels_sheet is None:
+            return []
         try:
-            all_data = self._get_all_records_with_retry(self.channels_sheet)
-            # Get distinct channel IDs
+            all_data: List[Dict[str, Any]] = self._get_all_records_with_retry(
+                self.channels_sheet
+            )
             unique_ids = {
                 int(str(record.get("Chat_ID", "")).replace("−", "-"))
                 for record in all_data
             }
-            result = [ChannelRow(Channel_ID=chat_id) for chat_id in unique_ids]
-
-            # Persist last known good value
-            _last_known_channels = result
-
+            result: List[ChannelRow] = [
+                ChannelRow(Channel_ID=chat_id) for chat_id in unique_ids
+            ]
+            _fallback_cache["channels"] = result
             return result
         except Exception as e:
             logger.error("Error getting channels: %s", e)
-            # Return last known good value if available
-            if _last_known_channels:
+            fallback_val = _fallback_cache.get("channels")
+            if fallback_val:
                 logger.warning("Returning last known channels due to error")
-                return _last_known_channels
+                return cast(List[ChannelRow], fallback_val)
             return []
 
     def add_channel(self, chat_id: int) -> bool:
@@ -897,14 +848,16 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             return False
 
     # User management methods
-    @cached(cache=_users_cache)
+    @cached(cache=_users_cache)  # type: ignore[untyped-decorator]
     def get_all_users(self) -> List[UserRow]:
         """Get all registered users."""
-        global _last_known_users
-
+        if self.users_sheet is None:
+            return []
         try:
-            all_data = self._get_all_records_with_retry(self.users_sheet)
-            result = []
+            all_data: List[Dict[str, Any]] = self._get_all_records_with_retry(
+                self.users_sheet
+            )
+            result: List[UserRow] = []
             for record in all_data:
                 user = UserRow(
                     Telegram_ID=int(record.get("Telegram_ID", 0)),
@@ -918,17 +871,14 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
                     Updated_At=record.get("Updated_At", ""),
                 )
                 result.append(user)
-
-            # Persist last known good value
-            _last_known_users = result
-
+            _fallback_cache["users"] = result
             return result
         except Exception as e:
             logger.error("Error getting users: %s", e)
-            # Return last known good value if available
-            if _last_known_users:
+            fallback_val = _fallback_cache.get("users")
+            if fallback_val:
                 logger.warning("Returning last known users due to error")
-                return _last_known_users
+                return cast(List[UserRow], fallback_val)
             return []
 
     def get_user_by_telegram_id(self, telegram_id: int) -> Optional[UserRow]:
@@ -946,8 +896,14 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             # Check if already queued
             for queued_user in self.user_upsert_queue:
                 if queued_user.get("Telegram_ID") == telegram_id:
-                    # Update the existing queue entry
-                    queued_user.update(user)
+                    # Update the existing queue entry in place (UserRow keys)
+                    queued_user["Name"] = user.get("Name", "")
+                    queued_user["Email"] = user.get("Email", "")
+                    queued_user["Telegram"] = user.get("Telegram", "")
+                    queued_user["Show_On_Website_Consent"] = user.get(
+                        "Show_On_Website_Consent", False
+                    )
+                    queued_user["Updated_At"] = user.get("Updated_At", "")
                     logger.info("Updated queued user info for user %s", telegram_id)
                     return True
 
@@ -960,81 +916,77 @@ class SheetsManager:  # pylint: disable=too-many-public-methods
             logger.error("Error queueing user upsert: %s", e)
             return False
 
+    def _prepare_user_flush_batch(
+        self,
+        all_data: List[List[Any]],
+        headers: List[Any],
+        users_to_process: List[UserRow],
+    ) -> Tuple[List[Dict[str, Any]], List[List[Any]]]:
+        """Compute batch updates and new user rows for user queue flush."""
+        telegram_id_col = headers.index("Telegram_ID") + 1
+        batch_updates = []
+        new_users = []
+        for user in users_to_process:
+            telegram_id = user.get("Telegram_ID")
+            user_row_index = None
+            for i, row in enumerate(all_data[1:], start=2):
+                if len(row) > telegram_id_col - 1 and str(
+                    row[telegram_id_col - 1]
+                ) == str(telegram_id):
+                    user_row_index = i
+                    break
+            user_data = [
+                user.get("Telegram_ID"),
+                user.get("Name"),
+                user.get("Email"),
+                user.get("Telegram"),
+                "TRUE" if user.get("Show_On_Website_Consent") else "FALSE",
+                user.get("Updated_At"),
+            ]
+            if user_row_index:
+                batch_updates.append(
+                    {
+                        "range": f"A{user_row_index}:F{user_row_index}",
+                        "values": [user_data],
+                    }
+                )
+            else:
+                new_users.append(user_data)
+        return batch_updates, new_users
+
     def flush_user_queue(self) -> bool:
         """Flush all queued user operations to Google Sheets."""
-        users_to_process = []
-
+        if self.users_sheet is None:
+            return False
+        users_to_process: List[UserRow] = []
         try:
             if not self.user_upsert_queue:
                 logger.debug("No users in queue to flush")
                 return True
-
-            # Convert queue to list and clear queue
             users_to_process = list(self.user_upsert_queue)
             self.user_upsert_queue.clear()
-
-            # Get current sheet data
-            all_data = self._get_all_values_with_retry(self.users_sheet)
+            all_data: List[List[Any]] = self._get_all_values_with_retry(
+                self.users_sheet
+            )
             headers = all_data[0]
-
-            # Find column indices
-            telegram_id_col = headers.index("Telegram_ID") + 1
-
-            # Prepare batch updates and additions
-            batch_updates = []
-            new_users = []
-
-            for user in users_to_process:
-                telegram_id = user.get("Telegram_ID")
-
-                # Find if user exists
-                user_row_index = None
-                for i, row in enumerate(all_data[1:], start=2):
-                    if len(row) > telegram_id_col - 1 and str(
-                        row[telegram_id_col - 1]
-                    ) == str(telegram_id):
-                        user_row_index = i
-                        break
-
-                user_data = [
-                    user.get("Telegram_ID"),
-                    user.get("Name"),
-                    user.get("Email"),
-                    user.get("Telegram"),
-                    "TRUE" if user.get("Show_On_Website_Consent") else "FALSE",
-                    user.get("Updated_At"),
-                ]
-
-                if user_row_index:
-                    # Update existing user
-                    batch_updates.append(
-                        {
-                            "range": f"A{user_row_index}:F{user_row_index}",
-                            "values": [user_data],
-                        }
-                    )
-                else:
-                    # New user
-                    new_users.append(user_data)
-
-            # Perform batch update for existing users
+            batch_updates, new_users = self._prepare_user_flush_batch(
+                all_data, headers, users_to_process
+            )
             if batch_updates:
                 self._batch_update_with_retry(self.users_sheet, batch_updates)
                 logger.info("Updated %d existing users", len(batch_updates))
-
-            # Add new users
             if new_users:
                 start_row = len(all_data) + 1
                 end_row = start_row + len(new_users) - 1
-                range_str = f"A{start_row}:F{end_row}"
-                self._update_with_retry(self.users_sheet, range_str, new_users)
+                self._update_with_retry(
+                    self.users_sheet,
+                    f"A{start_row}:F{end_row}",
+                    new_users,
+                )
                 logger.info("Added %d new users", len(new_users))
-
             return True
-
         except Exception as e:
             logger.error("Error flushing user queue: %s", e)
-            # Re-queue the users if they failed to flush
             for user in users_to_process:
                 self.user_upsert_queue.append(user)
             return False

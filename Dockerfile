@@ -5,12 +5,11 @@ LABEL version="2025" \
     org.opencontainers.image.source="https://github.com/fyysikkokilta/vaalilakanabot"
 
 WORKDIR /bot
-COPY requirements.txt requirements.txt
-RUN pip install -r requirements.txt
 
-COPY assets ./assets
+COPY pyproject.toml README.md ./
 COPY src ./src
-COPY vaalilakanabot.py vaalilakanabot.py
+COPY assets ./assets
 
+RUN pip install --no-cache-dir .
 
-CMD ["python3", "vaalilakanabot.py"]
+CMD ["vaalilakanabot"]

@@ -10,6 +10,12 @@ max-line-length=160
 [MESSAGES CONTROL]
 disable=
     broad-except,
+    too-many-locals,
+    too-many-arguments,
+    too-many-statements,
+    too-many-nested-blocks,
+    too-many-return-statements,
+    too-many-public-methods,
 
 [TYPECHECK]
 generated-members =
