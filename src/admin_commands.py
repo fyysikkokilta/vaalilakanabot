@@ -9,7 +9,6 @@ from telegram.ext import ContextTypes
 
 from .config import ADMIN_CHAT_ID
 from .sheets_data_manager import DataManager
-from .announcements import announce_to_channels
 from .utils import create_fiirumi_link, get_notification_text, get_role_name
 
 logger = logging.getLogger("vaalilakanabot")
@@ -229,7 +228,7 @@ async def unassociate_fiirumi(update: Update, data_manager: DataManager):
 
 
 async def add_elected_tag(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
+    update: Update, _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ):
     """Mark an applicant as elected."""
     try:
@@ -312,12 +311,23 @@ async def add_elected_tag(
 
 
 async def export_officials_website(update: Update, data_manager: DataManager):
-    """Export officials data to CSV format compatible with the Guild website."""
+    """Export officials data to CSV format compatible with the Guild website.
+
+    Respects user consent settings from the Users sheet:
+    - Only includes users who have given Show_Name_Consent
+    - Includes Telegram handle if Show_Telegram_Consent is given
+    """
     try:
         if not is_admin_chat(update.message.chat.id):
             return
 
         output = StringIO()
+
+        # Get all users for consent checking
+        all_users = data_manager.sheets_manager.get_all_users()
+        users_by_id = {user.get("Telegram_ID"): user for user in all_users}
+
+        skipped_count = 0  # Track how many officials were skipped due to consent
 
         # Process each role from the full dataset, filtering out board roles
         for division_data in data_manager.vaalilakana_full:
@@ -325,22 +335,75 @@ async def export_officials_website(update: Update, data_manager: DataManager):
                 if role_data.get("Type") == "BOARD":
                     continue  # Skip board roles
 
-                # Write division and role information
-                division_fi = division_data.get("Division_FI")
-                division_en = division_data.get("Division_EN")
-                role_fi = role_data.get("Role_FI")
-                role_en = role_data.get("Role_EN")
-                output.write(f'"{division_fi}","{division_en}","{role_fi}","{role_en}"')
-
-                # Write applicant names (only elected)
+                # Collect elected applicants who have given consent
+                consented_applicants = []
                 for applicant in role_data.get("Applicants", []):
-                    if applicant.get("Status") == "ELECTED":
-                        output.write(f',"{applicant.get("Name")}"')
+                    if applicant.get("Status") != "ELECTED":
+                        continue
 
-                output.write("\n")
+                    telegram_id = applicant.get("Telegram_ID")
+                    user = users_by_id.get(telegram_id)
+
+                    # Check consent: include if user has given Show_Name_Consent
+                    # OR if user info doesn't exist (backward compatibility)
+                    if user is None:
+                        # No user record, include for backward compatibility
+                        consented_applicants.append({
+                            "name": applicant.get("Name"),
+                            "telegram": None
+                        })
+                    elif user.get("Show_Name_Consent", False):
+                        # User has given consent to show name
+                        telegram_handle = None
+                        if user.get("Show_Telegram_Consent", False):
+                            telegram_handle = user.get("Telegram", "")
+
+                        consented_applicants.append({
+                            "name": applicant.get("Name"),
+                            "telegram": telegram_handle
+                        })
+                    else:
+                        # User exists but hasn't given consent
+                        skipped_count += 1
+                        logger.info(
+                            "Skipping official %s (role: %s) - no name consent",
+                            applicant.get("Name"),
+                            role_data.get("Role_EN")
+                        )
+
+                # Only write row if there are consented applicants
+                if consented_applicants:
+                    # Write division and role information
+                    division_fi = division_data.get("Division_FI")
+                    division_en = division_data.get("Division_EN")
+                    role_fi = role_data.get("Role_FI")
+                    role_en = role_data.get("Role_EN")
+                    output.write(f'"{division_fi}","{division_en}","{role_fi}","{role_en}"')
+
+                    # Write applicant names and optional Telegram handles
+                    for applicant_data in consented_applicants:
+                        name = applicant_data["name"]
+                        telegram = applicant_data["telegram"]
+
+                        if telegram:
+                            # Include Telegram handle if consented
+                            output.write(f',"{name}","{telegram}"')
+                        else:
+                            # Just name
+                            output.write(f',"{name}"')
+
+                    output.write("\n")
 
         output.seek(0)
+
+        # Add info message about consent filtering
+        info_msg = "Officials data exported successfully."
+        if skipped_count > 0:
+            info_msg += f"\n\nℹ️ Note: {skipped_count} elected official(s) were excluded because they haven't given consent to show their name on the website."
+
+        await update.message.reply_text(info_msg)
         await update.message.reply_document(output, filename="officials.csv")
+
     except Exception as e:
         logger.error("Error in export_officials_csv: %s", e)
         await update.message.reply_text(
