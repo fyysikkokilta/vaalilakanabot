@@ -172,8 +172,29 @@ The bot can automatically create Discourse categories for elections when `ELECTI
 | G      | Fiirumi_Post | Link to forum introduction              |
 | H      | Status       | APPROVED, DENIED, REMOVED, ELECTED, "" |
 | I      | Language     | fi or en (for notifications)            |
+| J      | Group_ID     | UUID linking group applications (optional) |
 
 Empty Status means pending approval.
+
+### Users Sheet
+
+| Column | Field                  | Note                                      |
+|--------|------------------------|-------------------------------------------|
+| A      | Telegram_ID            | User's numeric Telegram ID (primary key)  |
+| B      | Name                   | Full name                                 |
+| C      | Email                  | Contact email                             |
+| D      | Telegram               | @username                                 |
+| E      | Show_Name_Consent      | TRUE/FALSE - consent to show name         |
+| F      | Show_Image_Consent     | TRUE/FALSE - consent to show image        |
+| G      | Show_Telegram_Consent  | TRUE/FALSE - consent to show Telegram     |
+| H      | Updated_At             | ISO timestamp of last update              |
+
+**Purpose**: Stores user information separately from applications to support:
+- Reusing user data across multiple applications
+- Managing consent for website display
+- Future group application support
+
+**Implementation Status**: Infrastructure complete, UI integration pending.
 
 ## CI/CD
 
@@ -221,3 +242,38 @@ Admins can add roles directly in Google Sheets without bot commands:
 3. Type must be BOARD, ELECTED, NON_ELECTED, or AUDITOR
 4. Deadline format must be exactly `dd.mm.`
 5. Bot picks up changes automatically via cache invalidation
+
+## Feature Implementation Status
+
+### User Information Sheet (Issue #28)
+**Status**: Infrastructure Complete, UI Pending
+
+**Implemented**:
+- Users worksheet creation and management
+- UserRow type with consent fields
+- User caching and persistence
+- User upsert queue for batching
+- Flush operations integrated into job queue
+
+**Pending**:
+- User registration conversation handler
+- User info validation before applications
+- Integration with /start or new /register command
+- UI for updating user information
+
+### Group Applications (Issue #29)
+**Status**: Infrastructure Ready, Command Pending
+
+**Implemented**:
+- Group_ID field in Applications sheet
+- ApplicationRow type updated for group support
+- Database structure supports group applications
+
+**Pending**:
+- /combine command implementation
+- Group application conversation handler
+- Group member information gathering
+- Group application approval workflow
+- Group application display logic
+
+Both features have complete backend infrastructure and are ready for UI implementation.
