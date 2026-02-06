@@ -2,13 +2,15 @@
 
 import logging
 import re
-from io import StringIO
+from io import BytesIO, StringIO
+from typing import Dict, List, Literal, Tuple
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from .config import ADMIN_CHAT_ID
 from .sheets_data_manager import DataManager
+from .types import ConsentedApplicant, DivisionData, RoleData, UserRow
 from .utils import create_fiirumi_link, get_notification_text, get_role_name
 
 logger = logging.getLogger("vaalilakanabot")
@@ -48,10 +50,10 @@ def is_admin_chat(chat_id: int) -> bool:
     return str(chat_id) == str(ADMIN_CHAT_ID)
 
 
-async def admin_help(update: Update, _: ContextTypes.DEFAULT_TYPE):
+async def admin_help(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     """Show help information for admins in English."""
     try:
-        if not is_admin_chat(update.message.chat.id):
+        if not update.message or not is_admin_chat(update.message.chat.id):
             return
 
         help_text = """
@@ -74,7 +76,7 @@ async def admin_help(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • <b>Applications</b> sheet: Manage applicants, statuses, Fiirumi links
 • <b>Role Management</b>: Add new rows to create roles, IDs auto-generate
 • <b>Application Status</b>: APPROVED, DENIED, REMOVED, ELECTED, or empty (pending)
-• <b>Data Types</b>: BOARD, ELECTED, NON-ELECTED, AUDITOR
+• <b>Data Types</b>: BOARD, ELECTED, NON_ELECTED, AUDITOR
 • <b>Real-time updates</b>: Changes sync automatically with the bot
 
 <b>Examples:</b>
@@ -104,48 +106,49 @@ async def admin_help(update: Update, _: ContextTypes.DEFAULT_TYPE):
 
 async def remove_applicant(
     update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
-):
+) -> None:
     """Remove an applicant from a position."""
     try:
-        if not is_admin_chat(update.message.chat.id):
+        message = update.message
+        if message is None or not is_admin_chat(message.chat.id):
             return
 
-        text = parse_command_parameters(update.message.text, "/remove")
+        text = parse_command_parameters(message.text or "", "/remove")
         params = text.split(",")
 
         try:
             position = params[0].strip()
             name = params[1].strip()
         except Exception as e:
-            await update.message.reply_text(
-                "Invalid parameters - /remove <position>, <name>"
-            )
+            await message.reply_text("Invalid parameters - /remove <position>, <name>")
             raise ValueError("Invalid parameters") from e
 
         # Find position by Finnish or English name
         role = data_manager.find_role_by_name(position)
         if not role:
-            await update.message.reply_text(f"Unknown position: {position}")
+            await message.reply_text(f"Unknown position: {position}")
             return
 
         success, app_data = data_manager.remove_applicant(role, name)
         if success and app_data:
-            await update.message.reply_text(f"Removed:\n{role.get('Role_EN')}: {name}")
+            await message.reply_text(f"Removed:\n{role.get('Role_EN')}: {name}")
 
             # Send notification to the removed applicant
             try:
-                user_language = app_data.get("Language", "en")
+                user_language: Literal["fi", "en"] = app_data.get("Language") or "en"
                 notification_text = get_notification_text(
                     "removed",
                     get_role_name(role, user_language != "en"),
                     user_language,
                 )
 
-                await context.bot.send_message(
-                    chat_id=app_data.get("Telegram_ID"),
-                    text=notification_text,
-                    parse_mode="HTML",
-                )
+                telegram_id = app_data.get("Telegram_ID")
+                if telegram_id is not None:
+                    await context.bot.send_message(
+                        chat_id=telegram_id,
+                        text=notification_text,
+                        parse_mode="HTML",
+                    )
                 logger.info(
                     "Sent removal notification to user %s for position %s in %s",
                     app_data.get("Telegram_ID"),
@@ -159,20 +162,21 @@ async def remove_applicant(
                     e,
                 )
         else:
-            await update.message.reply_text(
+            await message.reply_text(
                 f"Failed to remove applicant: {name} from {role.get('Role_EN')}. Check if the applicant exists for this position."
             )
     except Exception as e:
         logger.error(e)
 
 
-async def add_fiirumi_to_applicant(update: Update, data_manager: DataManager):
+async def add_fiirumi_to_applicant(update: Update, data_manager: DataManager) -> None:
     """Add a fiirumi link to an applicant."""
     try:
-        if not is_admin_chat(update.message.chat.id):
+        message = update.message
+        if message is None or not is_admin_chat(message.chat.id):
             return
 
-        text = parse_command_parameters(update.message.text, "/add_fiirumi")
+        text = parse_command_parameters(message.text or "", "/add_fiirumi")
         params = text.split(",")
 
         try:
@@ -180,7 +184,7 @@ async def add_fiirumi_to_applicant(update: Update, data_manager: DataManager):
             name = params[1].strip()
             thread_id = params[2].strip()
         except Exception as e:
-            await update.message.reply_text(
+            await message.reply_text(
                 "Invalid parameters - /add_fiirumi <position>, <name>, <thread_id>",
             )
             raise ValueError("Invalid parameters") from e
@@ -188,33 +192,39 @@ async def add_fiirumi_to_applicant(update: Update, data_manager: DataManager):
         # Find position by Finnish or English name
         found_position = data_manager.find_role_by_name(position)
         if not found_position:
-            await update.message.reply_text(f"Unknown position: {position}")
+            await message.reply_text(f"Unknown position: {position}")
             return
 
         fiirumi = create_fiirumi_link(thread_id)
-        data_manager.set_applicant_fiirumi(found_position, name, fiirumi)
-
-        await update.message.reply_html(
-            f'Added Fiirumi:\n{found_position.get("Role_EN")}: <a href="{fiirumi}">{name}</a>',
+        success = data_manager.set_applicant_fiirumi(found_position, name, fiirumi)
+        if not success:
+            await message.reply_text(f"Applicant not found: {name}")
+            return
+        display_names = data_manager.get_applicant_display_names_for_role_and_name(
+            found_position, name
+        )
+        await message.reply_html(
+            f'Added Fiirumi:\n{found_position.get("Role_EN")}: <a href="{fiirumi}">{display_names}</a>',
         )
     except Exception as e:
         logger.error(e)
 
 
-async def unassociate_fiirumi(update: Update, data_manager: DataManager):
+async def unassociate_fiirumi(update: Update, data_manager: DataManager) -> None:
     """Remove fiirumi link from an applicant."""
     try:
-        if not is_admin_chat(update.message.chat.id):
+        message = update.message
+        if message is None or not is_admin_chat(message.chat.id):
             return
 
-        text = parse_command_parameters(update.message.text, "/remove_fiirumi")
+        text = parse_command_parameters(message.text or "", "/remove_fiirumi")
         params = [arg.strip() for arg in text.split(",")]
 
         try:
             position, name = params
         except Exception as e:
             logger.error(e)
-            await update.message.reply_text(
+            await message.reply_text(
                 "Invalid parameters - /remove_fiirumi <position>, <name>"
             )
             return
@@ -222,12 +232,18 @@ async def unassociate_fiirumi(update: Update, data_manager: DataManager):
         # Find position by Finnish or English name
         role = data_manager.find_role_by_name(position)
         if not role:
-            await update.message.reply_text(f"Unknown position: {position}")
+            await message.reply_text(f"Unknown position: {position}")
             return
 
-        data_manager.set_applicant_fiirumi(role, name, "")
-        await update.message.reply_text(
-            f"Fiirumi link removed:\n{role.get('Role_EN')}: {name}"
+        success = data_manager.set_applicant_fiirumi(role, name, "")
+        if not success:
+            await message.reply_text(f"Applicant not found: {name}")
+            return
+        display_names = data_manager.get_applicant_display_names_for_role_and_name(
+            role, name
+        )
+        await message.reply_text(
+            f"Fiirumi link removed:\n{role.get('Role_EN')}: {display_names}"
         )
     except Exception as e:
         logger.error(e)
@@ -235,17 +251,18 @@ async def unassociate_fiirumi(update: Update, data_manager: DataManager):
 
 async def add_elected_tag(
     update: Update, _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
-):
+) -> None:
     """Mark applicant(s) as elected. For group applications, list all members: /elected <position>, <name1>, <name2>, ..."""
     try:
-        if not is_admin_chat(update.message.chat.id):
+        msg = update.message
+        if msg is None or not is_admin_chat(msg.chat.id):
             return
 
-        text = parse_command_parameters(update.message.text, "/elected")
+        text = parse_command_parameters(msg.text or "", "/elected")
         params = [p.strip() for p in text.split(",") if p.strip()]
 
         if len(params) < 2:
-            await update.message.reply_text(
+            await msg.reply_text(
                 "Usage: /elected <position>, <name> or /elected <position>, <name1>, <name2>, ... (for groups list all members)"
             )
             return
@@ -255,11 +272,11 @@ async def add_elected_tag(
 
         role = data_manager.find_role_by_name(position)
         if not role:
-            await update.message.reply_text(f"Unknown position: {position}")
+            await msg.reply_text(f"Unknown position: {position}")
             return
 
-        success, message = data_manager.set_applicants_elected(role, names)
-        await update.message.reply_text(message)
+        success, reply_text = data_manager.set_applicants_elected(role, names)
+        await msg.reply_text(reply_text)
 
         if success:
             logger.info(
@@ -273,17 +290,18 @@ async def add_elected_tag(
 
 async def combine_applicants(
     update: Update, _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
-):
+) -> None:
     """Link applicants for a role as a group (same Group_ID). Usage: /combine <position>, <name1>, <name2>, ..."""
     try:
-        if not is_admin_chat(update.message.chat.id):
+        msg = update.message
+        if msg is None or not is_admin_chat(msg.chat.id):
             return
 
-        text = parse_command_parameters(update.message.text, "/combine")
+        text = parse_command_parameters(msg.text or "", "/combine")
         params = [p.strip() for p in text.split(",") if p.strip()]
 
         if len(params) < 3:
-            await update.message.reply_text(
+            await msg.reply_text(
                 "Usage: /combine <position>, <name1>, <name2>, ... (at least 2 names)"
             )
             return
@@ -293,11 +311,11 @@ async def combine_applicants(
 
         role = data_manager.find_role_by_name(position)
         if not role:
-            await update.message.reply_text(f"Unknown position: {position}")
+            await msg.reply_text(f"Unknown position: {position}")
             return
 
-        success, message = data_manager.combine_applicants(role, names)
-        await update.message.reply_text(message)
+        success, reply_text = data_manager.combine_applicants(role, names)
+        await msg.reply_text(reply_text)
 
         if success:
             logger.info(
@@ -309,7 +327,58 @@ async def combine_applicants(
         logger.error(e)
 
 
-async def export_officials_website(update: Update, data_manager: DataManager):
+def _write_officials_role_row(
+    output: StringIO,
+    division_data: DivisionData,
+    role_data: RoleData,
+    consented_applicants: List[ConsentedApplicant],
+) -> None:
+    """Write one division/role row and its applicants to the CSV output."""
+    output.write(
+        f'"{division_data.get("Division_FI")}",'
+        f'"{division_data.get("Division_EN")}",'
+        f'"{role_data.get("Role_FI")}",'
+        f'"{role_data.get("Role_EN")}"'
+    )
+    for applicant_data in consented_applicants:
+        name = applicant_data["name"]
+        telegram = applicant_data["telegram"]
+        output.write(f',"{name}","{telegram}"' if telegram else f',"{name}"')
+    output.write("\n")
+
+
+def _consented_applicants_for_role(
+    role_data: RoleData, users_by_id: Dict[int, UserRow]
+) -> Tuple[List[ConsentedApplicant], int]:
+    """Return (list of {name, telegram}, skipped_count) for elected applicants with consent."""
+    consented: List[ConsentedApplicant] = []
+    skipped = 0
+    for applicant in role_data.get("Applicants", []):
+        if applicant.get("Status") != "ELECTED":
+            continue
+        telegram_id = applicant.get("Telegram_ID")
+        user = users_by_id.get(telegram_id)
+        applicant_name = str(applicant.get("Name") or "")
+        if user is None:
+            consented.append({"name": applicant_name, "telegram": None})
+        elif user.get("Show_On_Website_Consent", False):
+            consented.append(
+                {
+                    "name": applicant_name,
+                    "telegram": user.get("Telegram", "") or None,
+                }
+            )
+        else:
+            skipped += 1
+            logger.info(
+                "Skipping official %s (role: %s) - no website consent",
+                applicant.get("Name"),
+                role_data.get("Role_EN"),
+            )
+    return consented, skipped
+
+
+async def export_officials_website(update: Update, data_manager: DataManager) -> None:
     """Export officials data to CSV format compatible with the Guild website.
 
     Respects user consent from the Users sheet: only includes users who have
@@ -317,89 +386,47 @@ async def export_officials_website(update: Update, data_manager: DataManager):
     When consented, exports name and Telegram handle.
     """
     try:
-        if not is_admin_chat(update.message.chat.id):
+        message = update.message
+        if message is None or not is_admin_chat(message.chat.id):
             return
 
         output = StringIO()
-
-        # Get all users for consent checking
         all_users = data_manager.sheets_manager.get_all_users()
         users_by_id = {user.get("Telegram_ID"): user for user in all_users}
+        skipped_count = 0
 
-        skipped_count = 0  # Track how many officials were skipped due to consent
-
-        # Process each role from the full dataset, filtering out board roles
         for division_data in data_manager.vaalilakana_full:
             for role_data in division_data.get("Roles", []):
                 if role_data.get("Type") == "BOARD":
-                    continue  # Skip board roles
-
-                # Collect elected applicants who have given consent
-                consented_applicants = []
-                for applicant in role_data.get("Applicants", []):
-                    if applicant.get("Status") != "ELECTED":
-                        continue
-
-                    telegram_id = applicant.get("Telegram_ID")
-                    user = users_by_id.get(telegram_id)
-
-                    # Include only if user has given Show_On_Website_Consent (or no user record)
-                    if user is None:
-                        consented_applicants.append(
-                            {"name": applicant.get("Name"), "telegram": None}
-                        )
-                    elif user.get("Show_On_Website_Consent", False):
-                        consented_applicants.append(
-                            {
-                                "name": applicant.get("Name"),
-                                "telegram": user.get("Telegram", "") or None,
-                            }
-                        )
-                    else:
-                        skipped_count += 1
-                        logger.info(
-                            "Skipping official %s (role: %s) - no website consent",
-                            applicant.get("Name"),
-                            role_data.get("Role_EN"),
-                        )
-
-                # Only write row if there are consented applicants
-                if consented_applicants:
-                    # Write division and role information
-                    division_fi = division_data.get("Division_FI")
-                    division_en = division_data.get("Division_EN")
-                    role_fi = role_data.get("Role_FI")
-                    role_en = role_data.get("Role_EN")
-                    output.write(
-                        f'"{division_fi}","{division_en}","{role_fi}","{role_en}"'
-                    )
-
-                    # Write applicant names and optional Telegram handles
-                    for applicant_data in consented_applicants:
-                        name = applicant_data["name"]
-                        telegram = applicant_data["telegram"]
-
-                        if telegram:
-                            # Include Telegram handle if consented
-                            output.write(f',"{name}","{telegram}"')
-                        else:
-                            # Just name
-                            output.write(f',"{name}"')
-
-                    output.write("\n")
+                    continue
+                consented_applicants, skipped = _consented_applicants_for_role(
+                    role_data, users_by_id
+                )
+                skipped_count += skipped
+                if not consented_applicants:
+                    continue
+                _write_officials_role_row(
+                    output, division_data, role_data, consented_applicants
+                )
 
         output.seek(0)
+        csv_bytes = BytesIO(output.getvalue().encode("utf-8"))
 
         # Add info message about consent filtering
         info_msg = "Officials data exported successfully."
         if skipped_count > 0:
-            info_msg += f"\n\nℹ️ Note: {skipped_count} elected official(s) were excluded because they haven't given consent to be shown on the website's official page."
+            info_msg += (
+                f"\n\nℹ️ Note: {skipped_count} elected official(s) were excluded "
+                "because they haven't given consent to be shown on the website's "
+                "official page."
+            )
 
-        await update.message.reply_text(info_msg)
-        await update.message.reply_document(output, filename="officials.csv")
+        await message.reply_text(info_msg)
+        await message.reply_document(document=csv_bytes, filename="officials.csv")
 
     except Exception as e:
         logger.error("Error in export_officials_csv: %s", e)
-        await update.message.reply_text(
-            "Error exporting officials data. Please try again."
-        )
+        if update.message is not None:
+            await update.message.reply_text(
+                "Error exporting officials data. Please try again."
+            )
