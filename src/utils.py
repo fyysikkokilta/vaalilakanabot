@@ -1,11 +1,107 @@
 """Utility functions for the Vaalilakanabot."""
 
 import logging
-from typing import List, Optional
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import time
+from functools import wraps
+from typing import Any, Callable, List, Literal, Optional, TypeVar
+
+from gspread.exceptions import APIError
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 
 from .config import BASE_URL
-from .types import ElectionStructureRow, RoleData
+from .types import ApplicationRow, ApplicationStatus, ElectionStructureRow, RoleData, UserRow
+
+logger = logging.getLogger("vaalilakanabot")
+T = TypeVar("T")
+
+
+# Helper functions for common data access patterns
+
+
+def get_group_id(app: ApplicationRow) -> str:
+    """Safely extract and normalize Group_ID from an application.
+
+    Returns empty string if Group_ID is None or whitespace-only.
+    """
+    return (app.get("Group_ID") or "").strip()
+
+
+def get_user_name(user: Optional[UserRow], fallback: str = "") -> str:
+    """Safely extract name from user data with fallback.
+
+    Args:
+        user: UserRow data or None
+        fallback: Default value if user is None or has no name
+
+    Returns:
+        User's name or fallback value
+    """
+    if user is None:
+        return fallback
+    return user.get("Name", fallback)
+
+
+def is_active_application(app: ApplicationRow) -> bool:
+    """Check if an application is active (not denied or removed).
+
+    Args:
+        app: Application row to check
+
+    Returns:
+        True if status is not DENIED or REMOVED
+    """
+    status = app.get("Status", "")
+    return status not in ("DENIED", "REMOVED")
+
+
+def retry_on_api_error(
+    max_retries: int = 3, backoff_factor: float = 2.0
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """Decorator to retry API calls with exponential backoff on 503 errors."""
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            last_exception: Optional[Exception] = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except APIError as e:
+                    last_exception = e
+                    status_code = 503
+                    if hasattr(e, "response") and hasattr(e.response, "status_code"):
+                        status_code = e.response.status_code
+                    elif "503" not in str(e):
+                        raise
+                    if status_code not in (429, 500, 502, 503, 504):
+                        raise
+                    wait_time = backoff_factor**attempt
+                    logger.warning(
+                        "API error %s in %s (attempt %d/%d), retrying in %.1fs: %s",
+                        status_code,
+                        func.__name__,
+                        attempt + 1,
+                        max_retries,
+                        wait_time,
+                        e,
+                    )
+                    time.sleep(wait_time)
+                except Exception as exc:
+                    logger.error("Non-retryable error in %s: %s", func.__name__, exc)
+                    raise
+            logger.error(
+                "All %d retry attempts exhausted for %s, last error: %s",
+                max_retries,
+                func.__name__,
+                last_exception,
+            )
+            if last_exception:
+                raise last_exception
+            raise RuntimeError("Unknown error")
+
+        return wrapper
+
+    return decorator
 
 
 def generate_keyboard(
@@ -14,7 +110,7 @@ def generate_keyboard(
     back: Optional[str] = None,
 ) -> InlineKeyboardMarkup:
     """Generate an inline keyboard with the given options."""
-    keyboard = []
+    keyboard: List[List[InlineKeyboardButton]] = []
     for option in options:
         if callback_data:
             keyboard.append(
@@ -50,7 +146,7 @@ def check_title_matches_applicant_and_role(
         role_en_lower and role_en_lower in title_lower
     )
 
-    return name_in_title and role_in_title
+    return bool(name_in_title and role_in_title)
 
 
 def get_role_name(role: ElectionStructureRow, is_finnish: bool) -> str:
@@ -58,7 +154,9 @@ def get_role_name(role: ElectionStructureRow, is_finnish: bool) -> str:
     return role.get("Role_EN") if not is_finnish else role.get("Role_FI")
 
 
-def vaalilakana_to_string(vaalilakana: List[RoleData], language: str) -> str:
+def vaalilakana_to_string(
+    vaalilakana: List[RoleData], language: Literal["fi", "en"]
+) -> str:
     """Build vaalilakana message in the requested language (fi|en).
 
     Input: flat mapping of position -> role_data.
@@ -80,8 +178,8 @@ def vaalilakana_to_string(vaalilakana: List[RoleData], language: str) -> str:
     elected_label = get_translation("elected_label", is_finnish)
 
     # Partition roles by type
-    board_roles = []
-    officials_roles = []
+    board_roles: List[RoleData] = []
+    officials_roles: List[RoleData] = []
     for role_data in vaalilakana:
         role_type = role_data.get("Type")
         if role_type == "BOARD":
@@ -113,9 +211,9 @@ def vaalilakana_to_string(vaalilakana: List[RoleData], language: str) -> str:
         return text
 
     output = ""
-    output += headings.get("board")
+    output += headings.get("board") or ""
     output += render_roles(board_roles)
-    output += headings.get("officials")
+    output += headings.get("officials") or ""
     output += render_roles(officials_roles)
     return output
 
@@ -125,19 +223,18 @@ def create_fiirumi_link(t_id: str) -> str:
     return f"{BASE_URL}/t/{t_id}"
 
 
-async def send_sticker(update, sticker_name: str):
+async def send_sticker(update: Update, sticker_name: str) -> None:
     """Send a sticker by name."""
-
-    logger = logging.getLogger("vaalilakanabot")
-
     try:
         with open(f"assets/{sticker_name}.png", "rb") as photo:
+            if not update.message:
+                return
             await update.message.reply_sticker(photo)
     except Exception as e:
         logger.warning("Error in sending %s sticker: %s", sticker_name.capitalize(), e)
 
 
-def map_application_status(status: str, is_finnish: bool = True) -> str:
+def map_application_status(status: ApplicationStatus, is_finnish: bool = True) -> str:
     """Map application status to localized string."""
     status_map = {
         "APPROVED": ("Hyväksytty", "Approved"),
@@ -152,7 +249,9 @@ def map_application_status(status: str, is_finnish: bool = True) -> str:
 
 
 def get_notification_text(
-    notification_type: str, position: str, language: str = "en"
+    notification_type: Literal["approved", "rejected", "removed", "elected"],
+    position: str,
+    language: Literal["fi", "en"],
 ) -> str:
     """Get standardized notification text for different scenarios."""
     is_finnish = language == "fi"
@@ -196,7 +295,7 @@ def get_notification_text(
     return finnish_text if is_finnish else english_text
 
 
-def get_translation(key: str, is_finnish: bool = True, **kwargs) -> str:
+def get_translation(key: str, is_finnish: bool = True, **kwargs: Any) -> str:
     """Get translated text for a given key with optional formatting parameters."""
 
     translations = {
