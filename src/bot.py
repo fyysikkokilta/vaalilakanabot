@@ -19,10 +19,11 @@ from .config import (
     TOKEN,
     SELECTING_DIVISION,
     SELECTING_ROLE,
-    GIVING_NAME,
-    GIVING_EMAIL,
     CONFIRMING_APPLICATION,
     ELECTION_YEAR,
+    REGISTER_NAME,
+    REGISTER_EMAIL,
+    REGISTER_CONSENT,
 )
 from .sheets_data_manager import DataManager
 from .admin_commands import (
@@ -30,6 +31,7 @@ from .admin_commands import (
     add_fiirumi_to_applicant,
     unassociate_fiirumi,
     add_elected_tag,
+    combine_applicants,
     export_officials_website,
     admin_help,
 )
@@ -54,12 +56,18 @@ from .application_handlers import (
     apply,
     select_division,
     select_role,
-    enter_name,
-    enter_email,
     confirm_application,
     cancel,
     handle_multiple_application_choice,
     handle_back_button,
+)
+from .register_handlers import (
+    register_start_finnish,
+    register_start_english,
+    register_name,
+    register_email,
+    register_consent,
+    register_cancel,
 )
 from .announcements import parse_fiirumi_posts, announce_new_responses
 from .admin_approval import handle_admin_approval
@@ -128,6 +136,8 @@ async def process_application_queue(
 
 async def post_init(app: Application, data_manager: DataManager):
     """Post initialization setup."""
+    app.bot_data["data_manager"] = data_manager
+
     # Generate election areas if configured for current year
     if should_generate_areas(ELECTION_YEAR):
         logger.info("Generating election areas for year %s", ELECTION_YEAR)
@@ -186,6 +196,12 @@ async def post_init(app: Application, data_manager: DataManager):
         CommandHandler(
             "elected",
             lambda update, context: add_elected_tag(update, context, data_manager),
+        )
+    )
+    app.add_handler(
+        CommandHandler(
+            "combine",
+            lambda update, context: combine_applicants(update, context, data_manager),
         )
     )
 
@@ -269,18 +285,6 @@ async def post_init(app: Application, data_manager: DataManager):
                 lambda update, ctx: select_role(update, ctx, data_manager)
             ),
         ],
-        GIVING_NAME: [
-            MessageHandler(
-                filters.TEXT & (~filters.COMMAND),
-                enter_name,
-            )
-        ],
-        GIVING_EMAIL: [
-            MessageHandler(
-                filters.TEXT & (~filters.COMMAND),
-                lambda update, ctx: enter_email(update, ctx, data_manager),
-            )
-        ],
         CONFIRMING_APPLICATION: [
             CallbackQueryHandler(
                 lambda update, ctx: confirm_application(update, ctx, data_manager)
@@ -325,6 +329,40 @@ async def post_init(app: Application, data_manager: DataManager):
 
     app.add_handler(hae_handler)
     app.add_handler(apply_handler)
+
+    # Register conversation (user info for applications)
+    register_states = {
+        REGISTER_NAME: [
+            MessageHandler(filters.TEXT & (~filters.COMMAND), register_name)
+        ],
+        REGISTER_EMAIL: [
+            MessageHandler(filters.TEXT & (~filters.COMMAND), register_email)
+        ],
+        REGISTER_CONSENT: [
+            CallbackQueryHandler(
+                lambda update, ctx: register_consent(update, ctx, data_manager),
+                pattern="^register_consent_(yes|no)$",
+            )
+        ],
+    }
+    register_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler(
+                "rekisteröidy",
+                register_start_finnish,
+                filters.ChatType.PRIVATE,
+            ),
+            CommandHandler(
+                "register",
+                register_start_english,
+                filters.ChatType.PRIVATE,
+            ),
+        ],
+        states=register_states,
+        fallbacks=[CommandHandler("cancel", register_cancel)],
+    )
+    app.add_handler(register_handler)
+
     app.add_error_handler(error)
 
     logger.info("Post init done.")

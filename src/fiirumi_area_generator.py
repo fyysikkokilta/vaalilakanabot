@@ -207,10 +207,9 @@ def should_generate_areas(election_year: Optional[int]) -> bool:
     if current_year == election_year:
         logger.debug("Current year matches election year, should generate areas")
         return True
-    else:
-        logger.debug(
-            "Current year %d does not match election year %d, skipping",
-            current_year,
-            election_year
-        )
-        return False
+    logger.debug(
+        "Current year %d does not match election year %d, skipping",
+        current_year,
+        election_year,
+    )
+    return False

@@ -7,13 +7,10 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler, ContextTypes
 
-from src.types import ApplicationRow
-
+from .types import ApplicationRow
 from .config import (
     SELECTING_DIVISION,
     SELECTING_ROLE,
-    GIVING_NAME,
-    GIVING_EMAIL,
     CONFIRMING_APPLICATION,
 )
 from .utils import generate_keyboard, get_translation, get_role_name
@@ -34,6 +31,11 @@ async def hae(
     update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> int:
     """Apply for a position in Finnish."""
+    user_id = update.effective_user.id
+    if not data_manager.sheets_manager.get_user_by_telegram_id(user_id):
+        await update.message.reply_text(get_translation("please_register_first", True))
+        return ConversationHandler.END
+
     chat_data = context.chat_data
     chat_data["is_finnish"] = True
 
@@ -51,6 +53,11 @@ async def apply(
     update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> int:
     """Apply for a position in English."""
+    user_id = update.effective_user.id
+    if not data_manager.sheets_manager.get_user_by_telegram_id(user_id):
+        await update.message.reply_text(get_translation("please_register_first", False))
+        return ConversationHandler.END
+
     chat_data = context.chat_data
     chat_data["is_finnish"] = False
 
@@ -179,76 +186,26 @@ async def select_role(
     chat_data["role_id"] = role_id
     chat_data["is_elected"] = bool(is_elected_type)
 
-    elected_text = (
-        get_translation("elected_role_prefix", chat_data.get("is_finnish", False))
-        if chat_data.get("is_elected", False)
-        else ""
-    )
-
-    text = get_translation(
-        "ask_name",
-        chat_data.get("is_finnish", False),
-        elected_text=elected_text,
-        position=get_role_name(role_row, chat_data.get("is_finnish", False)),
-    )
-    await query.edit_message_text(
-        text=text,
-    )
-    return GIVING_NAME
-
-
-async def enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle name input."""
-    chat_data = context.chat_data
-    name = update.message.text.strip()
-
-    # Validate that name doesn't contain commas (interferes with admin commands)
-    if "," in name:
-        error_text = get_translation(
-            "name_no_commas", chat_data.get("is_finnish", False)
+    # Require registration: user info comes from Users sheet
+    user = data_manager.sheets_manager.get_user_by_telegram_id(user_id)
+    if not user:
+        text = get_translation(
+            "please_register_first", chat_data.get("is_finnish", False)
         )
-        await update.message.reply_text(error_text)
-        return GIVING_NAME
+        await query.edit_message_text(text)
+        return ConversationHandler.END
 
-    # Validate that name is not empty after stripping
-    if not name:
-        error_text = get_translation(
-            "name_not_empty", chat_data.get("is_finnish", False)
-        )
-        await update.message.reply_text(error_text)
-        return GIVING_NAME
-
-    chat_data["name"] = name
-    text = get_translation("ask_email", chat_data.get("is_finnish", False))
-    await update.message.reply_text(text)
-    return GIVING_EMAIL
-
-
-async def enter_email(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
-) -> int:
-    """Handle email input."""
-    chat_data = context.chat_data
-    email = update.message.text.strip()
-
-    # Validate email format
-    if not is_valid_email(email):
-        error_text = get_translation(
-            "email_invalid", chat_data.get("is_finnish", False)
-        )
-        await update.message.reply_text(error_text)
-        return GIVING_EMAIL  # Stay in the same state to ask for email again
-
-    chat_data["email"] = email
-    chat_data["telegram"] = update.message.from_user.username
+    chat_data["name"] = user.get("Name", "")
+    chat_data["email"] = user.get("Email", "")
+    chat_data["telegram"] = user.get("Telegram", "") or (
+        update.effective_user.username or ""
+    )
 
     elected_text = (
         get_translation("admin_approval_note", chat_data.get("is_finnish", False))
         if chat_data.get("is_elected", False)
         else ""
     )
-
-    role_row = data_manager.get_role_by_id(chat_data.get("role_id", ""))
 
     text = get_translation(
         "application_details",
@@ -271,7 +228,7 @@ async def enter_email(
         ]
     )
 
-    await update.message.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
     return CONFIRMING_APPLICATION
 
 
@@ -291,9 +248,6 @@ async def confirm_application(
                 Timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 Role_ID=role_row.get("ID", ""),
                 Telegram_ID=update.effective_user.id,
-                Name=chat_data.get("name", ""),
-                Email=chat_data.get("email", ""),
-                Telegram=chat_data.get("telegram", ""),
                 Fiirumi_Post="",
                 Status="PENDING",
                 Language="fi" if chat_data.get("is_finnish", False) else "en",
@@ -384,20 +338,49 @@ async def handle_multiple_application_choice(
         return ConversationHandler.END
 
     elif query.data == "continue_multiple":
-        # Continue with the application
+        data_manager = context.bot_data.get("data_manager")
+        if not data_manager:
+            await query.edit_message_text("Error. Please try again.")
+            return ConversationHandler.END
+        user_id = update.effective_user.id
+        user = data_manager.sheets_manager.get_user_by_telegram_id(user_id)
+        if not user:
+            text = get_translation(
+                "please_register_first", chat_data.get("is_finnish", False)
+            )
+            await query.edit_message_text(text)
+            return ConversationHandler.END
+        chat_data["name"] = user.get("Name", "")
+        chat_data["email"] = user.get("Email", "")
+        chat_data["telegram"] = user.get("Telegram", "") or (
+            update.effective_user.username or ""
+        )
+        role_row = data_manager.get_role_by_id(chat_data.get("role_id", ""))
         elected_text = (
-            get_translation("elected_role_prefix", chat_data.get("is_finnish", False))
+            get_translation("admin_approval_note", chat_data.get("is_finnish", False))
             if chat_data.get("is_elected", False)
             else ""
         )
-
         text = get_translation(
-            "ask_name",
+            "application_details",
             chat_data.get("is_finnish", False),
+            position=get_role_name(role_row, chat_data.get("is_finnish", False)),
+            name=chat_data.get("name", ""),
+            email=chat_data.get("email", ""),
+            telegram=chat_data.get("telegram", ""),
             elected_text=elected_text,
-            position=chat_data.get("loc_position", ""),
         )
-        await query.edit_message_text(text=text)
-        return GIVING_NAME
+        text_yes = get_translation("yes", chat_data.get("is_finnish", False))
+        text_no = get_translation("no", chat_data.get("is_finnish", False))
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(text_yes, callback_data="yes"),
+                    InlineKeyboardButton(text_no, callback_data="no"),
+                ]
+            ]
+        )
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
+        return CONFIRMING_APPLICATION
 
     return ConversationHandler.END

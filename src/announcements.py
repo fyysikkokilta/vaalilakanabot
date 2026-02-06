@@ -20,6 +20,7 @@ def get_current_minute_start() -> datetime:
 
 
 def get_fiirumi_data(url: str):
+    """Get Fiirumi data from the given URL."""
     # Without headers, the request will fetch cached data
     # This in turn causes the bot to not announce new posts and questions
     headers = {

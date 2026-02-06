@@ -26,8 +26,9 @@ async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • /start - Register channel for announcements
 • /stop - Unregister channel for announcements
 • /sheet - Show current election sheet
-• /applications - Show your applications (send in private chat)
-• /apply - Apply for a position (send in private chat)
+• /applications - Show your applications (private chat)
+• /register - Register or update your info (private chat, English)
+• /apply - Apply for a position (private chat)
 
 <b>Fun Commands:</b>
 • /jauhis - Send jauhis sticker
@@ -37,15 +38,16 @@ async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • /mauh - Send mauh sticker
 • /yauh - Send yauh sticker
 
-<b>Applying (through private message):</b>
-1) The applications are connected to your telegram user, so only apply using your own device.
-2) Official roles are organized in divisions. If you are not sure which division an official role belongs to, you can look for it in the physical sheet in the guild room or online at Fiirumi in the "vaalilakana" section.
-3) After this, start off by using the command /apply and follow the bot's guidance. You can check your information before submitting the application.
-4) If you are applying for an elected role, remember to post an introduction at Fiirumi.
+<b>Registration and applying (private message):</b>
+1) <b>Register first:</b> Use /register (or /rekisteröidy for Finnish). Enter your name, email, and consent. You can run it again to update your info.
+2) Applications are linked to your Telegram user—only apply from your own device.
+3) Official roles are in divisions. Find them on the physical sheet in the guild room or on Fiirumi in the "vaalilakana" section.
+4) Use /apply and follow the bot. You can check your details before submitting.
+5) For elected roles, remember to post an introduction on Fiirumi.
 
-<b>After applying (through private message):</b>
-• You can check your application with command /applications
-• If you want to cancel your application, contact the board.
+<b>After applying:</b>
+• Check status with /applications
+• To cancel, contact the board.
 
 <b>Finnish help:</b> /apua
 
@@ -67,8 +69,9 @@ async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • /start - Rekisteröi kanavan tiedotuskanavaksi
 • /stop - Poista kanava tiedotuskanavista
 • /lakana - Näytä nykyinen vaalilakana
-• /hakemukset - Näytä omat hakemuksesi (lähetä yksityisviestinä)
-• /hae - Hae virkaan (lähetä yksityisviestinä)
+• /hakemukset - Näytä omat hakemuksesi (yksityisviesti)
+• /rekisteröidy - Rekisteröidy tai päivitä tietosi (yksityisviesti)
+• /hae - Hae virkaan (yksityisviesti)
 
 <b>Hauskat komennot:</b>
 • /jauhis - Lähetä jauhis-tarra
@@ -78,15 +81,16 @@ async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE):
 • /mauh - Lähetä mauh-tarra
 • /yauh - Lähetä yauh-tarra
 
-<b>Hakeminen (yksityisviestillä):</b>
-1) Hakemukset yhdistetään hakijan telegramkäyttäjään, joten hakekaa ainoastaan omalla laitteella.
-2) Toimariroolit on jaettu jaoksittain. Mikäli et ole varma, missä jaoksessa haluamasi toimarirooli on, voit etsiä sen kiltiksen fyysisestä vaalilakanasta tai Fiirumilta vaalilakanaosiosta.
-3) Tämän jälkeen aloita hakeminen komennolla /hae ja seuraa botin ohjeita. Lopuksi voi vielä varmistaa tiedot ennen hakemuksen lähettämistä.
-4) Mikäli haet vaaleilla valittavaan rooliin, muista hakemisen jälkeen tehdä esittelyteksti Fiirumilla.
+<b>Rekisteröityminen ja hakeminen (yksityisviesti):</b>
+1) <b>Rekisteröidy ensin:</b> Käytä /rekisteröidy (tai /register englanniksi). Syötä nimesi, sähköposti ja suostumus. Voit ajaa komennon uudelleen päivittääksesi tiedot.
+2) Hakemukset yhdistetään telegramkäyttäjääsi—hakekaa vain omalla laitteella.
+3) Toimariroolit on jaettu jaoksittain. Etsi rooli kiltiksen fyysisestä vaalilakanasta tai Fiirumilta vaalilakanaosiosta.
+4) Aloita hakeminen komennolla /hae ja seuraa botin ohjeita. Voit tarkistaa tiedot ennen lähettämistä.
+5) Vaaleilla valittavaan rooliin haettaessa muista tehdä esittelyteksti Fiirumilla.
 
-<b>Hakemisen jälkeen (yksityisviestillä):</b>
-• Voit tarkistaa omat hakemuksesi komennolla /hakemukset
-• Mikäli haluat peruuttaa hakemuksen, ota yhteyttä raatiin.
+<b>Hakemisen jälkeen:</b>
+• Tarkista tilanne komennolla /hakemukset
+• Peruuttaaksesi hakemuksen, ota yhteyttä raatiin.
 
 <b>English help:</b> /help
 
@@ -170,6 +174,11 @@ async def applications_en(update: Update, data_manager: DataManager):
     """Show the current user's applications (English)."""
     try:
         user_id = update.effective_user.id
+        if not data_manager.sheets_manager.get_user_by_telegram_id(user_id):
+            await update.message.reply_text(
+                get_translation("please_register_first", is_finnish=False)
+            )
+            return
 
         # Fetch user's application rows
         app_rows = data_manager.get_applications_for_user(user_id)
@@ -190,6 +199,11 @@ async def applications(update: Update, data_manager: DataManager):
     """Näytä käyttäjän omat hakemukset (suomeksi)."""
     try:
         user_id = update.effective_user.id
+        if not data_manager.sheets_manager.get_user_by_telegram_id(user_id):
+            await update.message.reply_text(
+                get_translation("please_register_first", is_finnish=True)
+            )
+            return
 
         app_rows = data_manager.get_applications_for_user(user_id)
         if not app_rows:

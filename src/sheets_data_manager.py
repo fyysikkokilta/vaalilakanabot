@@ -1,7 +1,8 @@
 """Data management using Google Sheets as the primary data source."""
 
 import logging
-from typing import Dict, List, Optional
+import uuid
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 
 from .sheets_manager import SheetsManager
@@ -130,6 +131,32 @@ class DataManager:
             logger.error("Error getting applications for user %s: %s", telegram_id, e)
             return []
 
+    def get_applicant_display(self, app: ApplicationRow) -> Dict[str, str]:
+        """Resolve Name, Email, Telegram for an application from Users sheet (or legacy app fields)."""
+        user = self.sheets_manager.get_user_by_telegram_id(app.get("Telegram_ID"))
+        if user:
+            return {
+                "Name": user.get("Name", ""),
+                "Email": user.get("Email", ""),
+                "Telegram": user.get("Telegram", ""),
+            }
+        return {
+            "Name": app.get("Name", ""),
+            "Email": app.get("Email", ""),
+            "Telegram": app.get("Telegram", ""),
+        }
+
+    def get_applicant_by_role_and_name(
+        self, role: ElectionStructureRow, applicant_name: str
+    ) -> Optional[ApplicationRow]:
+        """Find an application for this role by applicant name (resolved from Users sheet)."""
+        applications = self.get_applications_for_role(role.get("ID"))
+        for app in applications:
+            display = self.get_applicant_display(app)
+            if display.get("Name") == applicant_name:
+                return app
+        return None
+
     def add_applicant(
         self,
         applicant: ApplicationRow,
@@ -142,52 +169,133 @@ class DataManager:
         role: ElectionStructureRow,
         applicant_name: str,
     ) -> tuple[bool, dict | None]:
-        """Remove an applicant by marking Status as REMOVED.
+        """Remove an applicant by marking Status as REMOVED. Name is resolved from Users sheet.
 
         Returns:
             Tuple of (success: bool, application_data: dict | None)
             application_data contains the removed application info for notification purposes
         """
-        applications = self.get_applications_for_role(role.get("ID"))
-        for app in applications:
-            if app.get("Name") == applicant_name:
-                telegram_id = app.get("Telegram_ID")
-                success = self.sheets_manager.update_application_status(
-                    role.get("ID"), telegram_id, status="REMOVED"
-                )
-
-                if success:
-                    return success, app
-
-                return success, None
-
-        return False, None
+        app = self.get_applicant_by_role_and_name(role, applicant_name)
+        if not app:
+            return False, None
+        telegram_id = app.get("Telegram_ID")
+        success = self.sheets_manager.update_application_status(
+            role.get("ID"), telegram_id, status="REMOVED"
+        )
+        if success:
+            disp = self.get_applicant_display(app)
+            app_with_display = dict(app)
+            app_with_display.update(disp)
+            app_with_display["Telegram_ID"] = telegram_id
+            return success, app_with_display
+        return success, None
 
     def set_applicant_fiirumi(
         self, role: ElectionStructureRow, applicant_name: str, fiirumi_link: str
     ) -> bool:
-        """Set the fiirumi link for an applicant."""
-        # Find the applicant by name (this is not ideal, should use telegram_id)
-        applications = self.get_applications_for_role(role.get("ID"))
-        for app in applications:
-            if app.get("Name") == applicant_name:
-                return self.sheets_manager.update_application_status(
-                    role.get("ID"), app.get("Telegram_ID"), fiirumi_post=fiirumi_link
-                )
-        return False
+        """Set the fiirumi link for an applicant. Name is resolved from Users sheet."""
+        app = self.get_applicant_by_role_and_name(role, applicant_name)
+        if not app:
+            return False
+        return self.sheets_manager.update_application_status(
+            role.get("ID"), app.get("Telegram_ID"), fiirumi_post=fiirumi_link
+        )
 
     def set_applicant_elected(
         self, role: ElectionStructureRow, applicant_name: str
     ) -> bool:
-        """Mark an applicant as elected by setting Status="ELECTED"."""
+        """Mark an applicant as elected by setting Status="ELECTED". Name is resolved from Users sheet."""
+        app = self.get_applicant_by_role_and_name(role, applicant_name)
+        if not app:
+            return False
+        return self.sheets_manager.update_application_status(
+            role.get("ID"), app.get("Telegram_ID"), status="ELECTED"
+        )
 
-        applications = self.get_applications_for_role(role.get("ID"))
-        for app in applications:
-            if app.get("Name") == applicant_name:
-                return self.sheets_manager.update_application_status(
-                    role.get("ID"), app.get("Telegram_ID"), status="ELECTED"
+    def set_applicants_elected(
+        self, role: ElectionStructureRow, names: List[str]
+    ) -> Tuple[bool, str]:
+        """Mark applicants as elected. For group applications, all group members must be listed.
+
+        Returns:
+            (True, success_message) or (False, error_message).
+        """
+        if not names:
+            return False, "At least one name is required."
+        role_id = role.get("ID")
+        apps = []
+        missing = []
+        for name in names:
+            app = self.get_applicant_by_role_and_name(role, name)
+            if app:
+                apps.append(app)
+            else:
+                missing.append(name)
+        if missing:
+            return False, f"Could not find applicant(s): {', '.join(missing)}"
+
+        # For any app that has a Group_ID, require all members of that group to be in the list
+        names_set = {self.get_applicant_display(a).get("Name", "") for a in apps}
+        for app in apps:
+            gid = (app.get("Group_ID") or "").strip()
+            if not gid:
+                continue
+            # All applications for this role with the same Group_ID
+            role_apps = self.get_applications_for_role(role_id)
+            group_members = [
+                self.get_applicant_display(a).get("Name", "")
+                for a in role_apps
+                if (a.get("Group_ID") or "").strip() == gid
+            ]
+            group_set = set(group_members)
+            if not group_set.issubset(names_set):
+                missing_in_list = group_set - names_set
+                return (
+                    False,
+                    f"Group application: list all members: {', '.join(sorted(group_set))}. Missing in command: {', '.join(sorted(missing_in_list))}.",
                 )
-        return False
+
+        for app in apps:
+            self.sheets_manager.update_application_status(
+                role_id, app.get("Telegram_ID"), status="ELECTED"
+            )
+        role_name = role.get("Role_EN") or role.get("Role_FI") or role_id
+        return True, f"Elected: {', '.join(names)} for {role_name}"
+
+    def combine_applicants(
+        self, role: ElectionStructureRow, names: List[str]
+    ) -> Tuple[bool, str]:
+        """Set the same Group_ID on all applications for the given role and names (group application).
+
+        Returns:
+            (True, success_message) or (False, error_message).
+        """
+        if len(names) < 2:
+            return False, "At least two names are required to combine."
+        role_id = role.get("ID")
+        apps = []
+        missing = []
+        for name in names:
+            app = self.get_applicant_by_role_and_name(role, name)
+            if app:
+                apps.append(app)
+            else:
+                missing.append(name)
+        if missing:
+            return (
+                False,
+                f"Could not find applicant(s) for this role: {', '.join(missing)}",
+            )
+        group_id = str(uuid.uuid4())
+        for app in apps:
+            self.sheets_manager.update_application_status(
+                role_id, app.get("Telegram_ID"), group_id=group_id
+            )
+        role_name = role.get("Role_EN") or role.get("Role_FI") or role_id
+        return (
+            True,
+            f"Combined {len(apps)} applicants for {role_name}: {', '.join(names)}",
+        )
 
     def approve_application(
         self, role_id: str, telegram_id: int

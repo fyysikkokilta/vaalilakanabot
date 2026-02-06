@@ -302,6 +302,35 @@ def get_translation(key: str, is_finnish: bool = True, **kwargs) -> str:
             "Sinulla ei ole vielä hakemuksia.",
             "You have no applications yet.",
         ),
+        # Registration
+        "please_register_first": (
+            "Rekisteröidy ensin komennolla /rekisteröidy ennen hakemista.",
+            "Please register first with /register before applying.",
+        ),
+        "register_ask_name": (
+            "Syötä koko nimesi:",
+            "Enter your full name:",
+        ),
+        "register_ask_email": (
+            "Syötä sähköpostiosoitteesi:",
+            "Enter your email address:",
+        ),
+        "register_consent": (
+            "Haluatko että nimesi näytetään killan sivustolla Toimihenkilöt-sivulla? (Kyllä/En)",
+            "Do you want your name shown on the guild website in the Officials page? (Yes/No)",
+        ),
+        "register_done": (
+            "Rekisteröityminen valmis. Voit nyt hakea virkoihin komennolla /hae tai /apply.",
+            "Registration complete. You can now apply for positions with /apply or /hae.",
+        ),
+        "register_update_intro": (
+            "Olet jo rekisteröitynyt. Täytä kohdat uudelleen päivittääksesi tietosi.",
+            "You are already registered. Go through the steps again to update your info.",
+        ),
+        "register_cancelled": (
+            "Rekisteröityminen peruttu.",
+            "Registration cancelled.",
+        ),
     }
 
     finnish_text, english_text = translations.get(key, (key, key))

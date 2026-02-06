@@ -6,3 +6,6 @@ __pycache__/
 
 # Local service account credentials (not committed)
 google_credentials.json
+
+# Claude
+.claude

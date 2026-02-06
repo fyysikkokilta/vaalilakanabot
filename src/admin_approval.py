@@ -40,14 +40,19 @@ async def send_admin_approval_request(
         ):
             elected_roles.append(other_role.get("Role_EN"))
 
+    display = data_manager.get_applicant_display(applicant)
+    telegram_handle = display.get("Telegram", "") or "(none)"
+    if telegram_handle and not telegram_handle.startswith("@"):
+        telegram_handle = f"@{telegram_handle}"
+
     # Build the admin message
     text = (
         f"🗳️ <b>New application for elected position</b>\n\n"
         f"<b>Position:</b> {role.get('Role_EN')}\n"
         f"<b>Division:</b> {division}\n"
-        f"<b>Name:</b> {applicant.get('Name')}\n"
-        f"<b>Email:</b> {applicant.get('Email')}\n"
-        f"<b>Telegram:</b> @{applicant.get('Telegram')}\n\n"
+        f"<b>Name:</b> {display.get('Name', '')}\n"
+        f"<b>Email:</b> {display.get('Email', '')}\n"
+        f"<b>Telegram:</b> {telegram_handle}\n\n"
     )
 
     # Add warning if user has other elected applications
@@ -136,7 +141,8 @@ async def handle_admin_approval(
         await query.edit_message_text("❌ Application not found or already processed.")
         return
 
-    name = application.get("Name")
+    display = data_manager.get_applicant_display(application)
+    name = display.get("Name", "")
     user_id = telegram_id
     language = application.get("Language")
 
