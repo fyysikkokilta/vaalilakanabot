@@ -346,34 +346,46 @@ def _write_officials_role_row(
     output.write("\n")
 
 
-def _consented_applicants_for_role(
-    role_data: RoleData, users_by_id: Dict[int, UserRow]
+def _consented_applicants_for_role_unmerged(
+    data_manager: DataManager,
+    role_id: str,
+    role_data: RoleData,
+    users_by_id: Dict[int, UserRow],
 ) -> Tuple[List[ConsentedApplicant], int]:
-    """Return (list of {name, telegram}, skipped_count) for elected applicants with consent."""
+    """Return (list of {name, telegram}, skipped_count) from unmerged applications.
+    Applies consent per individual so group members without consent are excluded.
+    """
     consented: List[ConsentedApplicant] = []
     skipped = 0
-    for applicant in role_data.get("Applicants", []):
-        if applicant.get("Status") != "ELECTED":
-            continue
-        telegram_id = applicant.get("Telegram_ID")
-        user = users_by_id.get(telegram_id)
-        applicant_name = str(applicant.get("Name") or "")
+    all_apps = data_manager.get_all_applications()
+    elected = [
+        a
+        for a in all_apps
+        if a.get("Role_ID") == role_id and a.get("Status") == "ELECTED"
+    ]
+    for app in elected:
+        user = users_by_id.get(app.get("Telegram_ID"))
         if user is None:
-            consented.append({"name": applicant_name, "telegram": None})
-        elif user.get("Show_On_Website_Consent", False):
-            consented.append(
-                {
-                    "name": applicant_name,
-                    "telegram": user.get("Telegram", "") or None,
-                }
+            skipped += 1
+            logger.debug(
+                "Skipping elected user (no Users row) for role %s",
+                role_data.get("Role_EN"),
             )
-        else:
+            continue
+        if not user.get("Show_On_Website_Consent", False):
             skipped += 1
             logger.info(
                 "Skipping official %s (role: %s) - no website consent",
-                applicant.get("Name"),
+                user.get("Name"),
                 role_data.get("Role_EN"),
             )
+            continue
+        consented.append(
+            {
+                "name": str(user.get("Name", "") or ""),
+                "telegram": user.get("Telegram", "") or None,
+            }
+        )
     return consented, skipped
 
 
@@ -390,7 +402,7 @@ async def export_officials_website(update: Update, data_manager: DataManager) ->
             return
 
         output = StringIO()
-        all_users = data_manager.sheets_manager.get_all_users()
+        all_users = data_manager.get_all_users()
         users_by_id = {user.get("Telegram_ID"): user for user in all_users}
         skipped_count = 0
 
@@ -398,8 +410,9 @@ async def export_officials_website(update: Update, data_manager: DataManager) ->
             for role_data in division_data.get("Roles", []):
                 if role_data.get("Type") == "BOARD":
                     continue
-                consented_applicants, skipped = _consented_applicants_for_role(
-                    role_data, users_by_id
+                role_id = role_data.get("ID", "")
+                consented_applicants, skipped = _consented_applicants_for_role_unmerged(
+                    data_manager, role_id, role_data, users_by_id
                 )
                 skipped_count += skipped
                 if not consented_applicants:

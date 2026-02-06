@@ -12,12 +12,10 @@ from google.oauth2.service_account import Credentials
 from .utils import retry_on_api_error
 from .types import (
     ApplicationRow,
-    DivisionData,
     ApplicationStatus,
     ChannelRow,
     ElectionStructureRow,
     DivisionDict,
-    RoleData,
     UserRow,
 )
 
@@ -295,14 +293,11 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
         """Find a role by Finnish or English name using cached roles."""
         if not role_name:
             return None
-
         all_roles = self.get_all_roles()
-
-        # Search for exact match first
-        for role in all_roles:
-            if role_name in (role.get("Role_FI"), role.get("Role_EN")):
-                return role
-        return None
+        return next(
+            (r for r in all_roles if role_name in (r.get("Role_FI"), r.get("Role_EN"))),
+            None,
+        )
 
     def get_role_by_id(self, role_id: str) -> Optional[ElectionStructureRow]:
         """Get a role by ID using cached roles."""
@@ -409,7 +404,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                 return True
 
             # Convert queue to list and clear queue
-            applications_to_add = list[ApplicationRow](self.application_queue)
+            applications_to_add = list(self.application_queue)
             self.application_queue.clear()
 
             if len(applications_to_add) == 0:
@@ -608,7 +603,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
         try:
             # Process channel additions
             if self.channel_add_queue:
-                channels_to_add = list[int](self.channel_add_queue)
+                channels_to_add = list(self.channel_add_queue)
                 self.channel_add_queue.clear()
 
                 # Prepare batch data for additions
@@ -637,9 +632,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
 
                 # Find rows to delete (collect indices in reverse order)
                 rows_to_delete: List[int] = []
-                for i, row in enumerate[List[Any]](
-                    all_data[1:], start=2
-                ):  # Start from row 2
+                for i, row in enumerate(all_data[1:], start=2):  # Start from row 2
                     if (
                         len(row) > 0
                         and int(str(row[0]).replace("−", "-")) in channels_to_remove
@@ -662,93 +655,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
             for chat_id in channels_to_remove:
                 self.channel_remove_queue.append(chat_id)
             return False
-
-    def _applicants_for_role_enriched(
-        self, role: ElectionStructureRow, all_applications: List[ApplicationRow]
-    ) -> List[Dict[str, Any]]:
-        """Return enriched and group-merged applicants for one role."""
-        raw = [
-            app
-            for app in all_applications
-            if app.get("Role_ID") == role.get("ID")
-            and app.get("Status", "PENDING") in ("APPROVED", "ELECTED")
-        ]
-        enriched: List[Dict[str, Any]] = []
-        for app in raw:
-            user = self.get_user_by_telegram_id(app.get("Telegram_ID"))
-            disp: Dict[str, Any] = dict(app)
-            disp["Name"] = user.get("Name", "") if user else app.get("Name", "")
-            disp["Email"] = user.get("Email", "") if user else app.get("Email", "")
-            disp["Telegram"] = (
-                user.get("Telegram", "") if user else app.get("Telegram", "")
-            )
-            enriched.append(disp)
-        by_group: Dict[str, List[Dict[str, Any]]] = {}
-        for eapp in enriched:
-            gid = (eapp.get("Group_ID") or "").strip()
-            key = gid if gid else f"_single_{eapp.get('Telegram_ID')}"
-            by_group.setdefault(key, []).append(eapp)
-        applicants: List[Dict[str, Any]] = []
-        for key, value in by_group.items():
-            group_apps = value
-            if len(group_apps) == 1:
-                applicants.append(group_apps[0])
-            else:
-                first = group_apps[0]
-                merged = dict[str, Any](first)
-                merged["Name"] = ", ".join(
-                    a.get("Name", "") or "(?)" for a in group_apps
-                )
-                merged["Fiirumi_Post"] = next(
-                    (
-                        a.get("Fiirumi_Post", "")
-                        for a in group_apps
-                        if a.get("Fiirumi_Post")
-                    ),
-                    first.get("Fiirumi_Post", ""),
-                )
-                applicants.append(merged)
-        return applicants
-
-    def _build_divisions_with_roles(
-        self,
-        roles: List[ElectionStructureRow],
-        all_applications: List[ApplicationRow],
-    ) -> List[DivisionData]:
-        """Build DivisionData list from roles and applications."""
-        divisions_dict: Dict[str, DivisionData] = {}
-        for role in roles:
-            div_fi = role.get("Division_FI")
-            div_en = role.get("Division_EN")
-            if div_fi not in divisions_dict:
-                divisions_dict[div_fi] = DivisionData(
-                    Division_FI=div_fi, Division_EN=div_en, Roles=[]
-                )
-            applicants = self._applicants_for_role_enriched(role, all_applications)
-            divisions_dict[div_fi]["Roles"].append(
-                RoleData(
-                    ID=role.get("ID", ""),
-                    Role_FI=role.get("Role_FI", ""),
-                    Role_EN=role.get("Role_EN", ""),
-                    Amount=role.get("Amount"),
-                    Deadline=role.get("Deadline"),
-                    Type=role.get("Type", "NON_ELECTED"),
-                    Applicants=cast(List[ApplicationRow], applicants),
-                    Division_FI=div_fi or "",
-                    Division_EN=div_en or "",
-                )
-            )
-        return list[DivisionData](divisions_dict.values())
-
-    def get_election_data(self) -> List[DivisionData]:
-        """Get election data structured for display/export."""
-        try:
-            roles = self.get_all_roles()
-            all_applications = self.get_all_applications()
-            return self._build_divisions_with_roles(roles, all_applications)
-        except Exception as e:
-            logger.error("Error getting election data: %s", e)
-            return []
 
     # Channel management methods
     @cached(cache=_channels_cache)  # type: ignore[untyped-decorator]
@@ -777,37 +683,49 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                 return cast(List[ChannelRow], fallback_val)
             return []
 
+    def _queue_channel_op(self, chat_id: int, for_addition: bool) -> bool:
+        """Queue a channel add or remove. Returns False only when removing non-existent channel."""
+        my_queue = self.channel_add_queue if for_addition else self.channel_remove_queue
+        other_queue = (
+            self.channel_remove_queue if for_addition else self.channel_add_queue
+        )
+        if chat_id in my_queue:
+            logger.info(
+                "Channel %s already queued for %s",
+                chat_id,
+                "addition" if for_addition else "removal",
+            )
+            return True
+        try:
+            other_queue.remove(chat_id)
+            logger.info(
+                "Cancelled %s: removed channel %s from %s queue",
+                "removal" if for_addition else "addition",
+                chat_id,
+                "remove" if for_addition else "add",
+            )
+            return True
+        except ValueError:
+            pass
+        existing = any(c.get("Channel_ID") == chat_id for c in self.get_all_channels())
+        if for_addition and existing:
+            logger.info("Channel %s already exists", chat_id)
+            return True
+        if not for_addition and not existing:
+            logger.warning("Channel %s not found", chat_id)
+            return False
+        my_queue.append(chat_id)
+        logger.info(
+            "Queued channel %s for %s",
+            chat_id,
+            "addition" if for_addition else "removal",
+        )
+        return True
+
     def add_channel(self, chat_id: int) -> bool:
         """Queue a channel to be added."""
         try:
-            # Check if already queued for addition
-            if any(queued_id == chat_id for queued_id in self.channel_add_queue):
-                logger.info("Channel %s already queued for addition", chat_id)
-                return True
-
-            # If queued for removal, remove from remove queue instead of adding to add queue
-            try:
-                self.channel_remove_queue.remove(chat_id)
-                logger.info(
-                    "Removed channel %s from remove queue (cancelled removal)", chat_id
-                )
-                return True
-            except ValueError:
-                pass  # Not in remove queue, continue with normal add logic
-
-            # Check if channel already exists in current data
-            existing_channels = self.get_all_channels()
-            if any(
-                channel.get("Channel_ID") == chat_id for channel in existing_channels
-            ):
-                logger.info("Channel %s already exists", chat_id)
-                return True
-
-            # Queue for addition
-            self.channel_add_queue.append(chat_id)
-            logger.info("Queued channel %s for addition", chat_id)
-            return True
-
+            return self._queue_channel_op(chat_id, for_addition=True)
         except Exception as e:
             logger.error("Error queueing channel addition: %s", e)
             return False
@@ -815,42 +733,15 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
     def remove_channel(self, chat_id: int) -> bool:
         """Queue a channel to be removed."""
         try:
-            # Check if already queued for removal
-            if any(queued_id == chat_id for queued_id in self.channel_remove_queue):
-                logger.info("Channel %s already queued for removal", chat_id)
-                return True
-
-            # If queued for addition, remove from add queue instead of adding to remove queue
-            try:
-                self.channel_add_queue.remove(chat_id)
-                logger.info(
-                    "Removed channel %s from add queue (cancelled addition)", chat_id
-                )
-                return True
-            except ValueError:
-                pass  # Not in add queue, continue with normal remove logic
-
-            # Check if channel exists in current data
-            existing_channels = self.get_all_channels()
-            if not any(
-                channel.get("Channel_ID") == chat_id for channel in existing_channels
-            ):
-                logger.warning("Channel %s not found in current data", chat_id)
-                return False
-
-            # Queue for removal
-            self.channel_remove_queue.append(chat_id)
-            logger.info("Queued channel %s for removal", chat_id)
-            return True
-
+            return self._queue_channel_op(chat_id, for_addition=False)
         except Exception as e:
             logger.error("Error queueing channel removal: %s", e)
             return False
 
     # User management methods
     @cached(cache=_users_cache)  # type: ignore[untyped-decorator]
-    def get_all_users(self) -> List[UserRow]:
-        """Get all registered users."""
+    def get_all_users_from_sheets(self) -> List[UserRow]:
+        """Get all users from the sheet with caching (TTL). Used by get_all_users()."""
         if self.users_sheet is None:
             return []
         try:
@@ -881,8 +772,34 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                 return cast(List[UserRow], fallback_val)
             return []
 
+    def get_all_users(self) -> List[UserRow]:
+        """Get all users: sheet data plus queued upserts. Use this everywhere for immediate visibility of changes."""
+        try:
+            sheet_users = self.get_all_users_from_sheets()
+            if not self.user_upsert_queue:
+                return sheet_users
+            result: List[UserRow] = list(sheet_users)
+            for queued in self.user_upsert_queue:
+                telegram_id = queued.get("Telegram_ID")
+                found = next(
+                    (
+                        i
+                        for i, u in enumerate(result)
+                        if u.get("Telegram_ID") == telegram_id
+                    ),
+                    None,
+                )
+                if found is not None:
+                    result[found] = queued
+                else:
+                    result.append(queued)
+            return result
+        except Exception as e:
+            logger.error("Error getting all users: %s", e)
+            return []
+
     def get_user_by_telegram_id(self, telegram_id: int) -> Optional[UserRow]:
-        """Get a user by Telegram ID."""
+        """Get a user by Telegram ID (includes queued upserts)."""
         all_users = self.get_all_users()
         return next(
             (user for user in all_users if user.get("Telegram_ID") == telegram_id), None

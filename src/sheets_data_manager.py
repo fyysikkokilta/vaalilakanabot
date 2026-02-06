@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 from datetime import datetime
 
 from .sheets_manager import SheetsManager
@@ -109,7 +109,7 @@ class DataManager:
     def _get_applications_for_role(self, role_id: str) -> List[ApplicationRow]:
         """Get all active applications for a specific role."""
         try:
-            all_applications = self.sheets_manager.get_all_applications()
+            all_applications = self.get_all_applications()
             return [
                 app
                 for app in all_applications
@@ -122,7 +122,7 @@ class DataManager:
     def get_applications_for_user(self, telegram_id: int) -> List[ApplicationRow]:
         """Get all active applications for a specific user."""
         try:
-            all_applications = self.sheets_manager.get_all_applications()
+            all_applications = self.get_all_applications()
             return [
                 app
                 for app in all_applications
@@ -132,9 +132,25 @@ class DataManager:
             logger.error("Error getting applications for user %s: %s", telegram_id, e)
             return []
 
+    def get_user_by_telegram_id(self, telegram_id: int) -> Optional[UserRow]:
+        """Get a user by Telegram ID (includes queued upserts). Use this for all user lookups."""
+        return self.sheets_manager.get_user_by_telegram_id(telegram_id)
+
+    def get_all_users(self) -> List[UserRow]:
+        """Get all users (sheet data plus queued upserts). Use this for consistent view of users."""
+        return self.sheets_manager.get_all_users()
+
+    def upsert_user(self, user: UserRow) -> bool:
+        """Queue a user to be added or updated. Flush user queue for persistence."""
+        return self.sheets_manager.upsert_user(user)
+
+    def get_all_applications(self) -> List[ApplicationRow]:
+        """Get all applications (sheet data plus queued and status updates)."""
+        return self.sheets_manager.get_all_applications()
+
     def get_applicant_display(self, app: ApplicationRow) -> Optional[UserRow]:
         """Resolve Name, Email, Telegram for an application from Users sheet."""
-        return self.sheets_manager.get_user_by_telegram_id(app.get("Telegram_ID"))
+        return self.get_user_by_telegram_id(app.get("Telegram_ID"))
 
     def get_applicant_display_names_for_announcement(
         self, role_id: str, application: ApplicationRow
@@ -462,26 +478,115 @@ class DataManager:
         """Remove a channel."""
         return self.sheets_manager.remove_channel(chat_id)
 
+    def flush_user_queue(self) -> bool:
+        """Flush queued user upserts to the sheet."""
+        return self.sheets_manager.flush_user_queue()
+
+    def flush_application_queue(self) -> bool:
+        """Flush queued applications to the sheet."""
+        return self.sheets_manager.flush_application_queue()
+
+    def flush_status_update_queue(self) -> bool:
+        """Flush queued status updates to the sheet."""
+        return self.sheets_manager.flush_status_update_queue()
+
+    def flush_channel_queue(self) -> bool:
+        """Flush queued channel add/remove operations to the sheet."""
+        return self.sheets_manager.flush_channel_queue()
+
+    def invalidate_caches(self) -> None:
+        """Invalidate sheet caches so next reads refetch from the sheet."""
+        self.sheets_manager.invalidate_caches()
+
     @property
     def channels(self) -> List[ChannelRow]:
         """Get all registered channels."""
         return self.sheets_manager.get_all_channels()
 
+    def _applicants_for_role_enriched(
+        self, role: ElectionStructureRow, all_applications: List[ApplicationRow]
+    ) -> List[Dict[str, Any]]:
+        """Return enriched and group-merged applicants for one role."""
+        raw = [
+            app
+            for app in all_applications
+            if app.get("Role_ID") == role.get("ID")
+            and app.get("Status", "PENDING") in ("APPROVED", "ELECTED")
+        ]
+        enriched: List[Dict[str, Any]] = []
+        for app in raw:
+            user = self.get_user_by_telegram_id(app.get("Telegram_ID"))
+            disp: Dict[str, Any] = dict(app)
+            disp["Name"] = user.get("Name", "") if user else app.get("Name", "")
+            disp["Email"] = user.get("Email", "") if user else app.get("Email", "")
+            disp["Telegram"] = (
+                user.get("Telegram", "") if user else app.get("Telegram", "")
+            )
+            enriched.append(disp)
+        by_group: Dict[str, List[Dict[str, Any]]] = {}
+        for eapp in enriched:
+            gid = (eapp.get("Group_ID") or "").strip()
+            key = gid if gid else f"_single_{eapp.get('Telegram_ID')}"
+            by_group.setdefault(key, []).append(eapp)
+        applicants: List[Dict[str, Any]] = []
+        for value in by_group.values():
+            group_apps = value
+            if len(group_apps) == 1:
+                applicants.append(group_apps[0])
+            else:
+                first = group_apps[0]
+                merged: Dict[str, Any] = dict(first)
+                merged["Name"] = ", ".join(
+                    a.get("Name", "") or "(?)" for a in group_apps
+                )
+                merged["Fiirumi_Post"] = next(
+                    (
+                        a.get("Fiirumi_Post", "")
+                        for a in group_apps
+                        if a.get("Fiirumi_Post")
+                    ),
+                    first.get("Fiirumi_Post", ""),
+                )
+                applicants.append(merged)
+        return applicants
+
+    def _build_election_data(self) -> List[DivisionData]:
+        """Build full election dataset (divisions with roles and enriched applicants)."""
+        roles = self.get_all_roles()
+        all_applications = self.get_all_applications()
+        divisions_dict: Dict[str, DivisionData] = {}
+        for role in roles:
+            div_fi = role.get("Division_FI")
+            div_en = role.get("Division_EN")
+            if div_fi not in divisions_dict:
+                divisions_dict[div_fi] = DivisionData(
+                    Division_FI=div_fi, Division_EN=div_en, Roles=[]
+                )
+            applicants = self._applicants_for_role_enriched(role, all_applications)
+            divisions_dict[div_fi]["Roles"].append(
+                RoleData(
+                    ID=role.get("ID", ""),
+                    Role_FI=role.get("Role_FI", ""),
+                    Role_EN=role.get("Role_EN", ""),
+                    Amount=role.get("Amount"),
+                    Deadline=role.get("Deadline"),
+                    Type=role.get("Type", "NON_ELECTED"),
+                    Applicants=cast(List[ApplicationRow], applicants),
+                    Division_FI=div_fi or "",
+                    Division_EN=div_en or "",
+                )
+            )
+        return list(divisions_dict.values())
+
     @property
     def vaalilakana_full(self) -> List[DivisionData]:
         """Get the full election dataset (all roles)."""
-        return self.sheets_manager.get_election_data()
+        return self._build_election_data()
 
     @property
     def vaalilakana(self) -> List[RoleData]:
-        """Get only elected roles (BOARD, ELECTED) as a flat mapping by position.
-
-        Returns a dict keyed by Finnish role title with role data including
-        denormalized division names for convenience.
-        """
-        full_data = self.sheets_manager.get_election_data()
-
-        # Flatten all roles from all divisions and filter by elected types
+        """Get only elected roles (BOARD, ELECTED) as a flat list."""
+        full_data = self._build_election_data()
         return [
             role
             for division in full_data

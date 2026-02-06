@@ -101,35 +101,35 @@ async def process_application_queue(
     """Flush queued applications, status updates, channel operations, and user operations to Google Sheets."""
     try:
         # First flush user operations (users should exist before applications reference them)
-        user_success = data_manager.sheets_manager.flush_user_queue()
+        user_success = data_manager.flush_user_queue()
         if user_success:
             logger.debug("Successfully flushed user queue")
         else:
             logger.warning("Failed to flush user queue")
 
         # Then flush new applications
-        app_success = data_manager.sheets_manager.flush_application_queue()
+        app_success = data_manager.flush_application_queue()
         if app_success:
             logger.debug("Successfully flushed application queue")
         else:
             logger.warning("Failed to flush application queue")
 
         # Then flush status updates (after applications exist)
-        status_success = data_manager.sheets_manager.flush_status_update_queue()
+        status_success = data_manager.flush_status_update_queue()
         if status_success:
             logger.debug("Successfully flushed status update queue")
         else:
             logger.warning("Failed to flush status update queue")
 
         # Finally flush channel operations
-        channel_success = data_manager.sheets_manager.flush_channel_queue()
+        channel_success = data_manager.flush_channel_queue()
         if channel_success:
             logger.debug("Successfully flushed channel queue")
         else:
             logger.warning("Failed to flush channel queue")
 
         # Invalidate caches after all operations
-        data_manager.sheets_manager.invalidate_caches()
+        data_manager.invalidate_caches()
 
     except Exception as e:
         logger.error("Error in queue processing job: %s", e)
@@ -356,12 +356,16 @@ async def post_init(
         entry_points=[
             CommandHandler(
                 "rekisteröidy",
-                register_start_finnish,
+                lambda update, context: register_start_finnish(
+                    update, context, data_manager
+                ),
                 filters.ChatType.PRIVATE,
             ),
             CommandHandler(
                 "register",
-                register_start_english,
+                lambda update, context: register_start_english(
+                    update, context, data_manager
+                ),
                 filters.ChatType.PRIVATE,
             ),
         ],

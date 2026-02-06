@@ -20,7 +20,10 @@ def is_valid_email(email: str) -> bool:
 
 
 async def _register_start(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, is_finnish: bool
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    data_manager: DataManager,
+    is_finnish: bool,
 ) -> Union[int, str]:
     """Shared start for registration; sets language and asks for name."""
     message = update.message
@@ -34,11 +37,8 @@ async def _register_start(
     if chat_data is None:
         return ConversationHandler.END
     chat_data["register_fi"] = is_finnish
-    data_manager = context.bot_data.get("data_manager")
     if data_manager and update.effective_user is not None:
-        existing = data_manager.sheets_manager.get_user_by_telegram_id(
-            update.effective_user.id
-        )
+        existing = data_manager.get_user_by_telegram_id(update.effective_user.id)
         if existing:
             intro = get_translation("register_update_intro", is_finnish)
             await message.reply_text(intro)
@@ -48,17 +48,17 @@ async def _register_start(
 
 
 async def register_start_finnish(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> Union[int, str]:
     """Start registration in Finnish (/rekisteröidy)."""
-    return await _register_start(update, context, is_finnish=True)
+    return await _register_start(update, context, data_manager, is_finnish=True)
 
 
 async def register_start_english(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> Union[int, str]:
     """Start registration in English (/register)."""
-    return await _register_start(update, context, is_finnish=False)
+    return await _register_start(update, context, data_manager, is_finnish=False)
 
 
 async def register_name(
@@ -149,7 +149,9 @@ async def register_consent(
         Show_On_Website_Consent=show_on_website,
         Updated_At=datetime.now().isoformat(),
     )
-    data_manager.sheets_manager.upsert_user(user)
+    data_manager.upsert_user(user)
+    data_manager.flush_user_queue()
+    data_manager.invalidate_caches()
     chat_data.pop("register_name", None)
     chat_data.pop("register_email", None)
     is_finnish = bool(chat_data.get("register_fi", True))

@@ -22,7 +22,7 @@ VAALILAKANA_POST_URL: str = os.environ["VAALILAKANA_POST_URL"]
 
 # Election year for automatic area generation (optional)
 # If set and matches current year, bot will auto-generate Discourse categories
-ELECTION_YEAR: Optional[str] = os.environ["ELECTION_YEAR"]
+ELECTION_YEAR: Optional[str] = os.getenv("ELECTION_YEAR") or None
 
 # Conversation states
 SELECTING_DIVISION: str = "SELECTING_DIVISION"

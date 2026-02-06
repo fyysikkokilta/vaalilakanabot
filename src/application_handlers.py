@@ -39,7 +39,7 @@ async def hae(
         return ConversationHandler.END
     chat_data: Dict[str, Any] = _chat_data
     user_id = update.effective_user.id
-    if not data_manager.sheets_manager.get_user_by_telegram_id(user_id):
+    if not data_manager.get_user_by_telegram_id(user_id):
         await update.message.reply_text(get_translation("please_register_first", True))
         return ConversationHandler.END
 
@@ -66,7 +66,7 @@ async def apply(
         return ConversationHandler.END
     chat_data = _chat_data
     user_id = update.effective_user.id
-    if not data_manager.sheets_manager.get_user_by_telegram_id(user_id):
+    if not data_manager.get_user_by_telegram_id(user_id):
         await update.message.reply_text(get_translation("please_register_first", False))
         return ConversationHandler.END
 
@@ -251,7 +251,7 @@ async def select_role(
     chat_data["is_elected"] = bool(is_elected_type)
 
     # Require registration: user info comes from Users sheet
-    user = data_manager.sheets_manager.get_user_by_telegram_id(user_id)
+    user = data_manager.get_user_by_telegram_id(user_id)
     if not user:
         text = get_translation(
             "please_register_first", bool(chat_data.get("is_finnish", False))
@@ -407,7 +407,7 @@ async def handle_multiple_application_choice(
             await query.edit_message_text("Error. Please try again.")
             return ConversationHandler.END
         user_id = update.effective_user.id
-        user = data_manager.sheets_manager.get_user_by_telegram_id(user_id)
+        user = data_manager.get_user_by_telegram_id(user_id)
         if not user:
             text = get_translation(
                 "please_register_first",

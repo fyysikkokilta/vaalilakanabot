@@ -191,7 +191,7 @@ async def applications_en(update: Update, data_manager: DataManager) -> None:
         return
     try:
         user_id = update.effective_user.id
-        if not data_manager.sheets_manager.get_user_by_telegram_id(user_id):
+        if not data_manager.get_user_by_telegram_id(user_id):
             await message.reply_text(
                 get_translation("please_register_first", is_finnish=False)
             )
@@ -219,7 +219,7 @@ async def applications(update: Update, data_manager: DataManager) -> None:
         return
     try:
         user_id = update.effective_user.id
-        if not data_manager.sheets_manager.get_user_by_telegram_id(user_id):
+        if not data_manager.get_user_by_telegram_id(user_id):
             await message.reply_text(
                 get_translation("please_register_first", is_finnish=True)
             )
