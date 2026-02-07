@@ -160,7 +160,8 @@ def _resolve_approval_context(
         (
             a
             for a in user_apps
-            if a.get("Role_ID") == role_id and a.get("Status", "PENDING") == "PENDING"
+            if a.get("Role_ID") == role_id
+            and (a.get("Status") or "").strip() in ("", "PENDING")
         ),
         None,
     )
@@ -213,8 +214,10 @@ async def handle_admin_approval(
                 f"Application has been added to the election sheet and notification sent to channels.",
                 parse_mode="HTML",
             )
+            lang = (application.get("Language") or "").strip().lower()
+            language: Literal["fi", "en"] = "fi" if lang == "fi" else "en"
             await _notify_applicant(
-                context, telegram_id, role_row, application.get("Language"), "approved"
+                context, telegram_id, role_row, language, "approved"
             )
             await announce_to_channels(
                 f"<b>Uusi nimi vaalilakanassa!</b>\n"
@@ -239,7 +242,7 @@ async def handle_admin_approval(
             )
         else:
             await query.edit_message_text("❌ Error rejecting application.")
-        await _notify_applicant(
-            context, telegram_id, role_row, application.get("Language"), "rejected"
-        )
+        lang = (application.get("Language") or "").strip().lower()
+        language = "fi" if lang == "fi" else "en"
+        await _notify_applicant(context, telegram_id, role_row, language, "rejected")
         logger.info("Application %s rejected by admin", application_ref)

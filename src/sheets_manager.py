@@ -473,13 +473,14 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                     )
                     return True
 
-            status_update = {
+            status_update: Dict[str, Any] = {
                 "Role_ID": role_id,
                 "Telegram_ID": telegram_id,
                 "Status": status,
                 "Fiirumi_Post": fiirumi_post,
-                "Group_ID": group_id or "",
             }
+            if group_id is not None and group_id != "":
+                status_update["Group_ID"] = group_id
             self.status_update_queue.append(status_update)
             logger.info(
                 "Queued status update for role %s, user %s",
@@ -622,7 +623,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
 
             # Process channel removals
             if self.channel_remove_queue:
-                channels_to_remove = list[int](self.channel_remove_queue)
+                channels_to_remove = list(self.channel_remove_queue)
                 self.channel_remove_queue.clear()
 
                 # Get current sheet data with retry

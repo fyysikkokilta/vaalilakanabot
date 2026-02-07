@@ -1,9 +1,10 @@
 """Main bot module."""
 
+import asyncio
 import datetime
 import logging
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from telegram import Update
 from telegram.ext import (
@@ -95,42 +96,23 @@ async def error(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.warning("Update '%s' caused error '%s'", update, context.error)
 
 
+def _run_flush_queues(data_manager: DataManager) -> None:
+    """Run all queue flushes and cache invalidation (sync, for use in executor)."""
+    data_manager.flush_user_queue()
+    data_manager.flush_application_queue()
+    data_manager.flush_status_update_queue()
+    data_manager.flush_channel_queue()
+    data_manager.invalidate_caches()
+
+
 async def process_application_queue(
     _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> None:
     """Flush queued applications, status updates, channel operations, and user operations to Google Sheets."""
     try:
-        # First flush user operations (users should exist before applications reference them)
-        user_success = data_manager.flush_user_queue()
-        if user_success:
-            logger.debug("Successfully flushed user queue")
-        else:
-            logger.warning("Failed to flush user queue")
-
-        # Then flush new applications
-        app_success = data_manager.flush_application_queue()
-        if app_success:
-            logger.debug("Successfully flushed application queue")
-        else:
-            logger.warning("Failed to flush application queue")
-
-        # Then flush status updates (after applications exist)
-        status_success = data_manager.flush_status_update_queue()
-        if status_success:
-            logger.debug("Successfully flushed status update queue")
-        else:
-            logger.warning("Failed to flush status update queue")
-
-        # Finally flush channel operations
-        channel_success = data_manager.flush_channel_queue()
-        if channel_success:
-            logger.debug("Successfully flushed channel queue")
-        else:
-            logger.warning("Failed to flush channel queue")
-
-        # Invalidate caches after all operations
-        data_manager.invalidate_caches()
-
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _run_flush_queues, data_manager)
+        logger.debug("Successfully flushed all queues")
     except Exception as e:
         logger.error("Error in queue processing job: %s", e)
 
@@ -142,13 +124,22 @@ async def post_init(
     app.bot_data["data_manager"] = data_manager
 
     # Generate election areas if configured for current year
-    if should_generate_areas(int(ELECTION_YEAR)) if ELECTION_YEAR else False:
-        logger.info("Generating election areas for year %s", ELECTION_YEAR)
-        success = (
-            generate_election_areas(int(ELECTION_YEAR)) if ELECTION_YEAR else False
-        )
+    election_year_int: Optional[int] = None
+    if ELECTION_YEAR:
+        try:
+            election_year_int = int(ELECTION_YEAR)
+        except ValueError:
+            logger.error(
+                "Invalid ELECTION_YEAR configuration %r; skipping election area generation",
+                ELECTION_YEAR,
+            )
+    if election_year_int is not None and should_generate_areas(election_year_int):
+        logger.info("Generating election areas for year %s", election_year_int)
+        success = generate_election_areas(election_year_int)
         if not success:
-            logger.error("Failed to generate election areas for year %s", ELECTION_YEAR)
+            logger.error(
+                "Failed to generate election areas for year %s", election_year_int
+            )
     else:
         logger.debug("Skipping election area generation")
 
