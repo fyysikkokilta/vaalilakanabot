@@ -55,7 +55,7 @@ class DivisionDict(TypedDict):
     Division_EN: str
 
 
-# For election sheet data
+# For election sheet data (Applicants are enriched with Name/Email/Telegram from Users)
 class RoleData(TypedDict):
     """Role data dictionary."""
 
@@ -65,7 +65,7 @@ class RoleData(TypedDict):
     Amount: Optional[str]
     Deadline: Optional[str]
     Type: RoleType
-    Applicants: List[ApplicationRow]
+    Applicants: List["ApplicationWithDisplay"]
     Division_FI: Optional[str]
     Division_EN: Optional[str]
 

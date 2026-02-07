@@ -1,6 +1,5 @@
 """Main bot module."""
 
-import asyncio
 import datetime
 import logging
 import sys

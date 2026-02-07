@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 
 from .sheets_manager import SheetsManager
@@ -14,6 +14,7 @@ from .types import (
     RoleData,
     ChannelRow,
     ApplicationRow,
+    ApplicationWithDisplay,
     UserRow,
     ResultTuple,
     ApprovalResult,
@@ -505,7 +506,7 @@ class DataManager:
 
     def _applicants_for_role_enriched(
         self, role: ElectionStructureRow, all_applications: List[ApplicationRow]
-    ) -> List[Dict[str, Any]]:
+    ) -> List[ApplicationWithDisplay]:
         """Return enriched and group-merged applicants for one role."""
         raw = [
             app
@@ -513,29 +514,36 @@ class DataManager:
             if app.get("Role_ID") == role.get("ID")
             and app.get("Status", "PENDING") in ("APPROVED", "ELECTED")
         ]
-        enriched: List[Dict[str, Any]] = []
+        enriched: List[ApplicationWithDisplay] = []
         for app in raw:
             user = self.get_user_by_telegram_id(app.get("Telegram_ID"))
-            disp: Dict[str, Any] = dict(app)
-            disp["Name"] = user.get("Name", "") if user else app.get("Name", "")
-            disp["Email"] = user.get("Email", "") if user else app.get("Email", "")
-            disp["Telegram"] = (
-                user.get("Telegram", "") if user else app.get("Telegram", "")
+            if not user:
+                logger.warning(
+                    "Skipping application with missing user: Role_ID=%s, Telegram_ID=%s",
+                    app.get("Role_ID"),
+                    app.get("Telegram_ID"),
+                )
+                continue
+            disp = ApplicationWithDisplay(
+                Name=user.get("Name", ""),
+                Email=user.get("Email", ""),
+                Telegram=user.get("Telegram", ""),
+                **app,
             )
             enriched.append(disp)
-        by_group: Dict[str, List[Dict[str, Any]]] = {}
-        for eapp in enriched:
-            gid = (eapp.get("Group_ID") or "").strip()
-            key = gid if gid else f"_single_{eapp.get('Telegram_ID')}"
-            by_group.setdefault(key, []).append(eapp)
-        applicants: List[Dict[str, Any]] = []
+        by_group: Dict[str, List[ApplicationWithDisplay]] = {}
+        for app in enriched:
+            gid = app.get("Group_ID") or ""
+            key = gid if gid else f"_single_{app.get('Telegram_ID')}"
+            by_group.setdefault(key, []).append(app)
+        applicants: List[ApplicationWithDisplay] = []
         for value in by_group.values():
             group_apps = value
             if len(group_apps) == 1:
                 applicants.append(group_apps[0])
             else:
                 first = group_apps[0]
-                merged: Dict[str, Any] = dict(first)
+                merged = first
                 merged["Name"] = ", ".join(
                     a.get("Name", "") or "(?)" for a in group_apps
                 )
@@ -571,7 +579,7 @@ class DataManager:
                     Amount=role.get("Amount"),
                     Deadline=role.get("Deadline"),
                     Type=role.get("Type", "NON_ELECTED"),
-                    Applicants=cast(List[ApplicationRow], applicants),
+                    Applicants=applicants,
                     Division_FI=div_fi or "",
                     Division_EN=div_en or "",
                 )

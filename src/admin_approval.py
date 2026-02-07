@@ -41,9 +41,13 @@ def _approval_message_text(
 ) -> str:
     """Build the approval request message body."""
     role_en = role.get("Role_EN", "") if role else ""
-    telegram_handle = display.get("Telegram", "") or "(none)"
-    if telegram_handle and not telegram_handle.startswith("@"):
-        telegram_handle = f"@{telegram_handle}"
+    telegram_handle_raw = (display.get("Telegram", "") or "").strip()
+    if not telegram_handle_raw or telegram_handle_raw.lower() == "(none)":
+        telegram_handle = "—"
+    elif telegram_handle_raw.startswith("@"):
+        telegram_handle = telegram_handle_raw
+    else:
+        telegram_handle = f"@{telegram_handle_raw}"
     text = (
         f"🗳️ <b>New application for elected position</b>\n\n"
         f"<b>Position:</b> {role_en}\n"
