@@ -186,8 +186,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
         _applications_cache.clear()
         _channels_cache.clear()
         _users_cache.clear()
-        for key in _fallback_cache:
-            _fallback_cache[key] = None
 
     @retry_on_api_error(max_retries=3, backoff_factor=2.0)
     def _get_all_values_with_retry(self, worksheet: Any) -> List[List[Any]]:
