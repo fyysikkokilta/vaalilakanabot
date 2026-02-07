@@ -110,8 +110,7 @@ async def process_application_queue(
 ) -> None:
     """Flush queued applications, status updates, channel operations, and user operations to Google Sheets."""
     try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _run_flush_queues, data_manager)
+        _run_flush_queues(data_manager)
         logger.debug("Successfully flushed all queues")
     except Exception as e:
         logger.error("Error in queue processing job: %s", e)
