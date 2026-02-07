@@ -7,7 +7,7 @@ name = "vaalilakanabot"
 version = "0.1.0"
 description = "Telegram bot for guild election (vaalilakana) management"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.13"
 dependencies = [
     "python-telegram-bot[job-queue]==22.3",
     "requests>=2.32.4",
@@ -31,7 +31,7 @@ where = ["."]
 include = ["src"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_ignores = true
 check_untyped_defs = true
@@ -51,7 +51,7 @@ module = ["src.sheets_manager"]
 warn_return_any = false
 
 [tool.pyright]
-pythonVersion = "3.9"
+pythonVersion = "3.13"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false
 reportUnknownMemberType = false

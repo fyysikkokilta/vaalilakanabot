@@ -24,13 +24,13 @@ from .config import GOOGLE_SHEET_URL, GOOGLE_CREDENTIALS_FILE
 logger = logging.getLogger("vaalilakanabot")
 
 # These are invalidated by the job queue every minute
-_roles_cache = TTLCache(maxsize=1, ttl=300)
-_applications_cache = TTLCache(maxsize=1, ttl=300)
-_channels_cache = TTLCache(maxsize=1, ttl=300)
-_users_cache = TTLCache(maxsize=1, ttl=300)
+_roles_cache: TTLCache[str, List[ElectionStructureRow]] = TTLCache(maxsize=1, ttl=300)
+_applications_cache: TTLCache[str, List[ApplicationRow]] = TTLCache(maxsize=1, ttl=300)
+_channels_cache: TTLCache[str, List[ChannelRow]] = TTLCache(maxsize=1, ttl=300)
+_users_cache: TTLCache[str, List[UserRow]] = TTLCache(maxsize=1, ttl=300)
 
 # Persistent storage for last known good values (mutate in place to avoid global statement)
-_fallback_cache: Dict[str, Any] = {
+_fallback_cache: Dict[str, Optional[List[Any]]] = {
     "roles": None,
     "applications": None,
     "channels": None,
