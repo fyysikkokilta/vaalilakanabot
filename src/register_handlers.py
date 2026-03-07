@@ -37,7 +37,7 @@ async def _register_start(
     if chat_data is None:
         return ConversationHandler.END
     chat_data["register_fi"] = is_finnish
-    if data_manager and update.effective_user is not None:
+    if update.effective_user is not None:
         existing = data_manager.get_user_by_telegram_id(update.effective_user.id)
         if existing:
             intro = get_translation("register_update_intro", is_finnish)
@@ -167,9 +167,10 @@ async def register_cancel(
     chat_data = context.chat_data
     if chat_data is None:
         return ConversationHandler.END
+    is_finnish = bool(chat_data.get("register_fi", True))
     chat_data.pop("register_name", None)
     chat_data.pop("register_email", None)
-    is_finnish = bool(chat_data.get("register_fi", True))
+    chat_data.pop("register_fi", None)
     if message is not None:
         await message.reply_text(get_translation("register_cancelled", is_finnish))
     return ConversationHandler.END

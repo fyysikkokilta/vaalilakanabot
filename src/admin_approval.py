@@ -81,8 +81,9 @@ async def send_admin_approval_request(
         role.get("ID", "") if role else "",
     )
     display_user = data_manager.get_applicant_display(applicant)
+    users_by_id = {applicant.get("Telegram_ID"): display_user} if display_user else {}
     display_names = data_manager.get_applicant_display_names_for_announcement(
-        applicant.get("Role_ID", ""), applicant
+        applicant.get("Role_ID", ""), applicant, users_by_id=users_by_id
     )
     display: Dict[str, str] = {
         "Name": display_names,
@@ -155,8 +156,7 @@ def _resolve_approval_context(
     data_manager: DataManager, role_id: str, telegram_id: int
 ) -> Tuple[Optional[ElectionStructureRow], Optional[ApplicationRow]]:
     """Return (role_row, application) or (None, None) if not found."""
-    roles = data_manager.get_all_roles()
-    role_row = next((r for r in roles if r.get("ID") == role_id), None)
+    role_row = data_manager.get_role_by_id(role_id)
     if not role_row:
         return None, None
     user_apps = data_manager.get_applications_for_user(telegram_id)
@@ -181,10 +181,10 @@ async def handle_admin_approval(
     query = update.callback_query
     if not query:
         return
-    await query.answer()
     if not query.message or not is_admin_chat(query.message.chat.id):
         await query.answer("This action is for admins only.", show_alert=True)
         return
+    await query.answer()
 
     parsed = _parse_approval_ref(query.data or "")
     if not parsed:
@@ -207,6 +207,7 @@ async def handle_admin_approval(
         role_id, application
     )
     application_ref = f"{role_id}_{telegram_id}"
+    is_finnish = (application.get("Language") or "").strip().lower() == "fi"
 
     if action == "approve":
         approved_app = data_manager.approve_application(role_id, telegram_id)
@@ -218,8 +219,6 @@ async def handle_admin_approval(
                 f"Application has been added to the election sheet and notification sent to channels.",
                 parse_mode="HTML",
             )
-            lang = (application.get("Language") or "").strip().lower()
-            is_finnish = lang == "fi"
             await _notify_applicant(
                 context, telegram_id, role_row, is_finnish, "approved"
             )
@@ -244,9 +243,7 @@ async def handle_admin_approval(
                 f"Application has been marked as DENIED.",
                 parse_mode="HTML",
             )
+            await _notify_applicant(context, telegram_id, role_row, is_finnish, "rejected")
+            logger.info("Application %s rejected by admin", application_ref)
         else:
             await query.edit_message_text("❌ Error rejecting application.")
-        lang = (application.get("Language") or "").strip().lower()
-        is_finnish = lang == "fi"
-        await _notify_applicant(context, telegram_id, role_row, is_finnish, "rejected")
-        logger.info("Application %s rejected by admin", application_ref)

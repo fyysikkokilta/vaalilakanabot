@@ -17,7 +17,6 @@ from .types import (
     ApplicationWithDisplay,
     UserRow,
     ResultTuple,
-    ApprovalResult,
 )
 
 
@@ -200,7 +199,10 @@ class DataManager:
         )
 
     def _get_applications_for_group(
-        self, role_id: str, group_id: str, role_apps: Optional[List[ApplicationRow]] = None
+        self,
+        role_id: str,
+        group_id: str,
+        role_apps: Optional[List[ApplicationRow]] = None,
     ) -> List[ApplicationRow]:
         """Return all applications for this role with the given Group_ID."""
         normalized_group_id = group_id.strip()
@@ -215,6 +217,7 @@ class DataManager:
         role: ElectionStructureRow,
         name: str,
         users_by_id: Optional[Dict[int, UserRow]] = None,
+        role_apps: Optional[List[ApplicationRow]] = None,
     ) -> List[ApplicationRow]:
         """Resolve name (single or 'Name1, Name2') to application(s) for a role.
 
@@ -223,7 +226,8 @@ class DataManager:
         Always expands to full group if the matched app is in a group.
         """
         role_id = role.get("ID", "")
-        role_apps = self._get_applications_for_role(role_id)
+        if role_apps is None:
+            role_apps = self._get_applications_for_role(role_id)
         if users_by_id is None:
             users_by_id = self._build_users_by_id()
 
@@ -281,14 +285,14 @@ class DataManager:
         if not apps:
             return False, None
 
-        app = apps[0]
-        telegram_id = app.get("Telegram_ID")
         role_id = role.get("ID", "")
-        success = self.sheets_manager.update_application_status(
-            role_id, telegram_id, status="REMOVED"
+        success = all(
+            self.sheets_manager.update_application_status(
+                role_id, app.get("Telegram_ID"), status="REMOVED"
+            )
+            for app in apps
         )
-
-        return (success, app) if success else (False, None)
+        return (success, apps[0]) if success else (False, None)
 
     def set_applicant_fiirumi(
         self, role: ElectionStructureRow, applicant_name: str, fiirumi_link: str
@@ -305,17 +309,6 @@ class DataManager:
             )
         return True
 
-    def set_applicant_elected(
-        self, role: ElectionStructureRow, applicant_name: str
-    ) -> bool:
-        """Mark an applicant as elected by setting Status="ELECTED". Name is resolved from Users sheet."""
-        apps = self._resolve_applications_by_name(role, applicant_name)
-        if not apps:
-            return False
-        return self.sheets_manager.update_application_status(
-            role.get("ID"), apps[0].get("Telegram_ID"), status="ELECTED"
-        )
-
     def _validate_group_completeness(
         self,
         apps: List[ApplicationRow],
@@ -330,13 +323,14 @@ class DataManager:
         if users_by_id is None:
             users_by_id = self._build_users_by_id()
 
+        role_apps = self._get_applications_for_role(role_id)
         for app in apps:
             group_id = get_group_id(app)
             if not group_id:
                 continue
 
             # Get all applications in this group
-            group_apps = self._get_applications_for_group(role_id, group_id)
+            group_apps = self._get_applications_for_group(role_id, group_id, role_apps)
             group_names = {
                 get_user_name(users_by_id.get(a.get("Telegram_ID")), "")
                 for a in group_apps
@@ -352,6 +346,30 @@ class DataManager:
 
         return None
 
+    def _resolve_names_to_apps(
+        self, role: ElectionStructureRow, names: List[str]
+    ) -> Tuple[List[ApplicationRow], List[str], Dict[int, UserRow]]:
+        """Resolve a list of display names to applications for a role.
+
+        Returns (resolved_apps, missing_names, users_by_id).
+        """
+        users_by_id = self._build_users_by_id()
+        role_apps = self._get_applications_for_role(role.get("ID", ""))
+        apps: List[ApplicationRow] = []
+        missing: List[str] = []
+        seen_ids: set = set()
+        for name in names:
+            resolved = self._resolve_applications_by_name(role, name, users_by_id, role_apps)
+            if resolved:
+                for app in resolved:
+                    tid = app.get("Telegram_ID")
+                    if tid not in seen_ids:
+                        seen_ids.add(tid)
+                        apps.append(app)
+            else:
+                missing.append(name)
+        return apps, missing, users_by_id
+
     def set_applicants_elected(
         self, role: ElectionStructureRow, names: List[str]
     ) -> ResultTuple:
@@ -364,18 +382,7 @@ class DataManager:
             return False, "At least one name is required."
 
         role_id = role.get("ID")
-        users_by_id = self._build_users_by_id()
-        apps: List[ApplicationRow] = []
-        missing: List[str] = []
-
-        # Find all applications by name
-        for name in names:
-            resolved = self._resolve_applications_by_name(role, name, users_by_id)
-            if resolved:
-                apps.append(resolved[0])
-            else:
-                missing.append(name)
-
+        apps, missing, users_by_id = self._resolve_names_to_apps(role, names)
         if missing:
             return False, f"Could not find applicant(s): {', '.join(missing)}"
 
@@ -408,18 +415,7 @@ class DataManager:
             return False, "At least two names are required to combine."
 
         role_id = role.get("ID")
-        users_by_id = self._build_users_by_id()
-        apps: List[ApplicationRow] = []
-        missing: List[str] = []
-
-        # Find all applications by name
-        for name in names:
-            resolved = self._resolve_applications_by_name(role, name, users_by_id)
-            if resolved:
-                apps.append(resolved[0])
-            else:
-                missing.append(name)
-
+        apps, missing, _ = self._resolve_names_to_apps(role, names)
         if missing:
             return (
                 False,
@@ -439,31 +435,25 @@ class DataManager:
             f"Combined {len(apps)} applicants for {role_name}: {', '.join(names)}",
         )
 
-    def approve_application(
-        self, role_id: str, telegram_id: int
-    ) -> Optional[ApprovalResult]:
+    def approve_application(self, role_id: str, telegram_id: int) -> bool:
         """Approve a pending application by updating its status to APPROVED."""
         try:
-            success = self.sheets_manager.update_application_status(
+            return self.sheets_manager.update_application_status(
                 role_id, telegram_id, status="APPROVED"
             )
-            return {"status": "approved"} if success else None
         except Exception as e:
             logger.error("Error approving application: %s", e)
-            return None
+            return False
 
-    def reject_application(
-        self, role_id: str, telegram_id: int
-    ) -> Optional[ApprovalResult]:
+    def reject_application(self, role_id: str, telegram_id: int) -> bool:
         """Reject a pending application by marking it as DENIED."""
         try:
-            success = self.sheets_manager.update_application_status(
+            return self.sheets_manager.update_application_status(
                 role_id, telegram_id, status="DENIED"
             )
-            return {"status": "rejected"} if success else None
         except Exception as e:
             logger.error("Error rejecting application: %s", e)
-            return None
+            return False
 
     # Google Sheets methods for all data
     def add_channel(self, chat_id: int) -> bool:
@@ -477,33 +467,13 @@ class DataManager:
         """Remove a channel."""
         return self.sheets_manager.remove_channel(chat_id)
 
-    def flush_user_queue(self) -> bool:
-        """Flush queued user upserts to the sheet."""
-        return self.sheets_manager.flush_user_queue()
-
-    def flush_application_queue(self) -> bool:
-        """Flush queued applications to the sheet."""
-        return self.sheets_manager.flush_application_queue()
-
-    def flush_status_update_queue(self) -> bool:
-        """Flush queued status updates to the sheet."""
-        return self.sheets_manager.flush_status_update_queue()
-
-    def flush_channel_queue(self) -> bool:
-        """Flush queued channel add/remove operations to the sheet."""
-        return self.sheets_manager.flush_channel_queue()
-
-    def invalidate_caches(self) -> None:
-        """Invalidate sheet caches so next reads refetch from the sheet."""
-        self.sheets_manager.invalidate_caches()
-
     def flush_all_queues(self) -> None:
-        """Flush all queues and invalidate caches."""
-        self.flush_user_queue()
-        self.flush_application_queue()
-        self.flush_status_update_queue()
-        self.flush_channel_queue()
-        self.invalidate_caches()
+        """Flush all queues and invalidate caches in dependency order."""
+        self.sheets_manager.flush_user_queue()
+        self.sheets_manager.flush_application_queue()
+        self.sheets_manager.flush_status_update_queue()
+        self.sheets_manager.flush_channel_queue()
+        self.sheets_manager.invalidate_caches()
 
     @property
     def channels(self) -> List[ChannelRow]:
@@ -521,7 +491,7 @@ class DataManager:
             app
             for app in all_applications
             if app.get("Role_ID") == role.get("ID")
-            and app.get("Status", "PENDING") in ("APPROVED", "ELECTED")
+            and app.get("Status", "") in ("APPROVED", "ELECTED")
         ]
         enriched: List[ApplicationWithDisplay] = []
         for app in raw:
@@ -550,13 +520,12 @@ class DataManager:
             key = gid if gid else f"_single_{app.get('Telegram_ID')}"
             by_group.setdefault(key, []).append(app)
         applicants: List[ApplicationWithDisplay] = []
-        for value in by_group.values():
-            group_apps = value
+        for group_apps in by_group.values():
             if len(group_apps) == 1:
                 applicants.append(group_apps[0])
             else:
                 first = group_apps[0]
-                merged = first
+                merged = first.copy()
                 merged["Name"] = ", ".join(
                     a.get("Name", "") or "(?)" for a in group_apps
                 )
@@ -584,7 +553,9 @@ class DataManager:
                 divisions_dict[div_fi] = DivisionData(
                     Division_FI=div_fi, Division_EN=div_en, Roles=[]
                 )
-            applicants = self._applicants_for_role_enriched(role, all_applications, users_by_id)
+            applicants = self._applicants_for_role_enriched(
+                role, all_applications, users_by_id
+            )
             divisions_dict[div_fi]["Roles"].append(
                 RoleData(
                     ID=role.get("ID", ""),
@@ -608,10 +579,9 @@ class DataManager:
     @property
     def vaalilakana(self) -> List[RoleData]:
         """Get only elected roles (BOARD, ELECTED) as a flat list."""
-        full_data = self._build_election_data()
         return [
             role
-            for division in full_data
+            for division in self.vaalilakana_full
             for role in division.get("Roles", [])
             if role.get("Type") in ("BOARD", "ELECTED")
         ]

@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, Tuple, Union, cast
+from typing import Any, Dict, Tuple, Union
 
 from telegram import CallbackQuery, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler, ContextTypes
@@ -13,65 +13,82 @@ from .config import (
     SELECTING_ROLE,
     CONFIRMING_APPLICATION,
 )
-from .utils import generate_keyboard, get_translation, get_role_name
+from .utils import generate_keyboard, get_translation, get_role_name, is_active_application
 from .admin_approval import send_admin_approval_request
 from .sheets_data_manager import DataManager
 
 logger = logging.getLogger("vaalilakanabot")
 
 
+async def _load_user_into_chat_data(
+    user_id: int,
+    chat_data: Dict[str, Any],
+    query: CallbackQuery,
+    update: Update,
+    data_manager: DataManager,
+) -> bool:
+    """Fetch the registered user and populate chat_data with name/email/telegram.
+
+    Returns False (and sends an error reply) if the user is not registered.
+    """
+    is_finnish = bool(chat_data.get("is_finnish", False))
+    user = data_manager.get_user_by_telegram_id(user_id)
+    if not user:
+        await query.edit_message_text(
+            get_translation("please_register_first", is_finnish)
+        )
+        return False
+    chat_data["name"] = user.get("Name", "")
+    chat_data["email"] = user.get("Email", "")
+    chat_data["telegram"] = user.get("Telegram", "") or (
+        update.effective_user.username if update.effective_user else ""
+    )
+    return True
+
+
+async def _start_application(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    data_manager: DataManager,
+    is_finnish: bool,
+) -> Union[int, str]:
+    """Common entry point for the application conversation."""
+    if update.effective_user is None or update.message is None:
+        return ConversationHandler.END
+    if context.chat_data is None:
+        return ConversationHandler.END
+    chat_data: Dict[str, Any] = context.chat_data
+    user_id = update.effective_user.id
+    if not data_manager.get_user_by_telegram_id(user_id):
+        await update.message.reply_text(
+            get_translation("please_register_first", is_finnish)
+        )
+        return ConversationHandler.END
+
+    chat_data["is_finnish"] = is_finnish
+
+    localized_divisions, callback_data = data_manager.get_divisions(is_finnish)
+    keyboard = generate_keyboard(localized_divisions, callback_data)
+
+    await update.message.reply_text(
+        get_translation("select_division", is_finnish),
+        reply_markup=keyboard,
+    )
+    return SELECTING_DIVISION
+
+
 async def hae(
     update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> Union[int, str]:
     """Apply for a position in Finnish."""
-    if update.effective_user is None or update.message is None:
-        return ConversationHandler.END
-    _chat_data = context.chat_data
-    if _chat_data is None:
-        return ConversationHandler.END
-    chat_data: Dict[str, Any] = _chat_data
-    user_id = update.effective_user.id
-    if not data_manager.get_user_by_telegram_id(user_id):
-        await update.message.reply_text(get_translation("please_register_first", True))
-        return ConversationHandler.END
-
-    chat_data["is_finnish"] = True
-
-    localized_divisions, callback_data = data_manager.get_divisions(True)
-    keyboard = generate_keyboard(localized_divisions, callback_data)
-
-    await update.message.reply_text(
-        get_translation("select_division", bool(chat_data.get("is_finnish", False))),
-        reply_markup=keyboard,
-    )
-    return SELECTING_DIVISION
+    return await _start_application(update, context, data_manager, True)
 
 
 async def apply(
     update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> Union[int, str]:
     """Apply for a position in English."""
-    if update.effective_user is None or update.message is None:
-        return ConversationHandler.END
-    _chat_data = context.chat_data
-    if _chat_data is None:
-        return ConversationHandler.END
-    chat_data = _chat_data
-    user_id = update.effective_user.id
-    if not data_manager.get_user_by_telegram_id(user_id):
-        await update.message.reply_text(get_translation("please_register_first", False))
-        return ConversationHandler.END
-
-    chat_data["is_finnish"] = False
-
-    localized_divisions, callback_data = data_manager.get_divisions(False)
-    keyboard = generate_keyboard(localized_divisions, callback_data)
-
-    await update.message.reply_text(
-        get_translation("select_division", bool(chat_data.get("is_finnish", False))),
-        reply_markup=keyboard,
-    )
-    return SELECTING_DIVISION
+    return await _start_application(update, context, data_manager, False)
 
 
 async def select_division(
@@ -81,24 +98,22 @@ async def select_division(
     query = update.callback_query
     if query is None:
         return ConversationHandler.END
-    _chat_data = context.chat_data
-    if _chat_data is None:
+    chat_data = context.chat_data
+    if chat_data is None:
         return ConversationHandler.END
-    chat_data = _chat_data
     await query.answer()
     query_data: str = query.data or ""
     chat_data["division"] = query_data
+    is_fi = bool(chat_data.get("is_finnish", False))
 
-    localized_positions, callback_data = data_manager.get_positions(
-        query_data, bool(chat_data.get("is_finnish", False))
-    )
+    localized_positions, callback_data = data_manager.get_positions(query_data, is_fi)
     keyboard = generate_keyboard(
         localized_positions,
         callback_data,
-        back=get_translation("back", bool(chat_data.get("is_finnish", False))),
+        back=get_translation("back", is_fi),
     )
 
-    text = get_translation("select_role", bool(chat_data.get("is_finnish", False)))
+    text = get_translation("select_role", is_fi)
     await query.edit_message_text(
         text=text,
         reply_markup=keyboard,
@@ -108,7 +123,7 @@ async def select_division(
 
 def _existing_application_message_key(application: ApplicationRow) -> str:
     """Return translation key for already-applied state."""
-    status = application.get("Status", "PENDING")
+    status = application.get("Status", "")
     if status == "APPROVED":
         return "already_applied"
     if status == "ELECTED":
@@ -117,13 +132,15 @@ def _existing_application_message_key(application: ApplicationRow) -> str:
 
 
 def _other_elected_roles_for_user(
-    user_applications: list[ApplicationRow], data_manager: DataManager
+    user_applications: list[ApplicationRow],
+    data_manager: DataManager,
+    current_role_id: str = "",
 ) -> list[ElectionStructureRow]:
-    """Return list of role rows for user's applications to elected/board roles."""
+    """Return list of role rows for user's other elected/board applications."""
     out = []
     for app in user_applications:
         role = data_manager.get_role_by_id(app.get("Role_ID", ""))
-        if role and role.get("Type") in ("BOARD", "ELECTED"):
+        if role and role.get("Type") in ("BOARD", "ELECTED") and role.get("ID") != current_role_id:
             out.append(role)
     return out
 
@@ -202,39 +219,40 @@ async def select_role(
     query = update.callback_query
     if query is None or update.effective_user is None:
         return ConversationHandler.END
-    _chat_data = context.chat_data
-    if _chat_data is None:
+    chat_data = context.chat_data
+    if chat_data is None:
         return ConversationHandler.END
-    chat_data = _chat_data
     await query.answer()
     user_id = update.effective_user.id
     role_id = query.data or ""
     role_row = data_manager.get_role_by_id(role_id)
-    is_elected_type = role_row is not None and role_row.get("Type") in (
-        "BOARD",
-        "ELECTED",
-    )
-
     if not role_row:
         await query.edit_message_text("Role not found.")
         return ConversationHandler.END
 
+    is_elected_type = role_row.get("Type") in ("BOARD", "ELECTED")
+
     user_applications = data_manager.get_applications_for_user(user_id)
     existing_application = next(
-        (app for app in user_applications if app.get("Role_ID") == role_id),
+        (
+            app for app in user_applications
+            if app.get("Role_ID") == role_id and is_active_application(app)
+        ),
         None,
     )
+
+    is_fi = bool(chat_data.get("is_finnish", False))
 
     if existing_application:
         text = get_translation(
             _existing_application_message_key(existing_application),
-            bool(chat_data.get("is_finnish", False)),
+            is_fi,
         )
         await query.edit_message_text(text)
         return ConversationHandler.END
 
     if is_elected_type:
-        other_roles = _other_elected_roles_for_user(user_applications, data_manager)
+        other_roles = _other_elected_roles_for_user(user_applications, data_manager, role_id)
         if other_roles:
             await _send_multiple_elected_warning(query, chat_data, other_roles, role_id)
             return SELECTING_ROLE
@@ -242,20 +260,8 @@ async def select_role(
     chat_data["role_id"] = role_id
     chat_data["is_elected"] = bool(is_elected_type)
 
-    # Require registration: user info comes from Users sheet
-    user = data_manager.get_user_by_telegram_id(user_id)
-    if not user:
-        text = get_translation(
-            "please_register_first", bool(chat_data.get("is_finnish", False))
-        )
-        await query.edit_message_text(text)
+    if not await _load_user_into_chat_data(user_id, chat_data, query, update, data_manager):
         return ConversationHandler.END
-
-    chat_data["name"] = user.get("Name", "")
-    chat_data["email"] = user.get("Email", "")
-    chat_data["telegram"] = user.get("Telegram", "") or (
-        update.effective_user.username or ""
-    )
 
     text, keyboard = _build_confirm_application_ui(chat_data, role_row)
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
@@ -269,10 +275,10 @@ async def confirm_application(
     query = update.callback_query
     if query is None or update.effective_user is None:
         return ConversationHandler.END
-    _chat_data = context.chat_data
-    if _chat_data is None:
+    chat_data = context.chat_data
+    if chat_data is None:
         return ConversationHandler.END
-    chat_data = _chat_data
+    is_fi = bool(chat_data.get("is_finnish", False))
 
     await query.answer()
     try:
@@ -285,8 +291,8 @@ async def confirm_application(
                 "Role_ID": role_row.get("ID", "") if role_row else role_id_str,
                 "Telegram_ID": update.effective_user.id,
                 "Fiirumi_Post": "",
-                "Status": "PENDING",
-                "Language": "fi" if chat_data.get("is_finnish", False) else "en",
+                "Status": "",
+                "Language": "fi" if is_fi else "en",
                 "Group_ID": None,
             }
 
@@ -294,6 +300,7 @@ async def confirm_application(
             needs_approval = role_row is not None and role_row.get("Type") in (
                 "BOARD",
                 "ELECTED",
+                "AUDITOR",
             )
             if needs_approval:
 
@@ -307,30 +314,25 @@ async def confirm_application(
                     new_applicant,
                 )
 
-                text = get_translation(
-                    "application_awaiting_approval",
-                    bool(chat_data.get("is_finnish", False)),
-                )
+                text = get_translation("application_awaiting_approval", is_fi)
             else:
                 # For non-elected roles, add directly with APPROVED status
                 new_applicant["Status"] = "APPROVED"
                 data_manager.add_applicant(new_applicant)
 
-                text = get_translation(
-                    "application_received",
-                    bool(chat_data.get("is_finnish", False)),
-                )
+                text = get_translation("application_received", is_fi)
 
             await query.edit_message_text(text, reply_markup=None)
         else:
-            text = get_translation(
-                "application_cancelled_full",
-                bool(chat_data.get("is_finnish", False)),
-            )
+            text = get_translation("application_cancelled_full", is_fi)
             await query.edit_message_text(text, reply_markup=None)
 
     except Exception as e:
         logger.error(e)
+        try:
+            await query.edit_message_text("An error occurred. Please try again.")
+        except Exception:
+            pass
 
     return ConversationHandler.END
 
@@ -353,19 +355,17 @@ async def handle_back_button(
     query = update.callback_query
     if query is None:
         return ConversationHandler.END
-    _chat_data = context.chat_data
-    if _chat_data is None:
+    chat_data = context.chat_data
+    if chat_data is None:
         return ConversationHandler.END
-    chat_data = _chat_data
     await query.answer()
+    is_fi = bool(chat_data.get("is_finnish", False))
 
     # Go back to division selection
-    localized_divisions, callback_data = data_manager.get_divisions(
-        bool(chat_data.get("is_finnish", False))
-    )
+    localized_divisions, callback_data = data_manager.get_divisions(is_fi)
     keyboard = generate_keyboard(localized_divisions, callback_data)
 
-    text = get_translation("select_division", bool(chat_data.get("is_finnish", False)))
+    text = get_translation("select_division", is_fi)
     await query.edit_message_text(
         text=text,
         reply_markup=keyboard,
@@ -380,10 +380,9 @@ async def handle_multiple_application_choice(
     query = update.callback_query
     if query is None or update.effective_user is None:
         return ConversationHandler.END
-    _chat_data = context.chat_data
-    if _chat_data is None:
+    chat_data = context.chat_data
+    if chat_data is None:
         return ConversationHandler.END
-    chat_data = _chat_data
     await query.answer()
 
     if query.data == "cancel_multiple":
@@ -395,27 +394,13 @@ async def handle_multiple_application_choice(
 
     if query.data == "continue_multiple":
         user_id = update.effective_user.id
-        user = data_manager.get_user_by_telegram_id(user_id)
-        if not user:
-            text = get_translation(
-                "please_register_first",
-                bool(chat_data.get("is_finnish", False)),
-            )
-            await query.edit_message_text(text)
+        if not await _load_user_into_chat_data(user_id, chat_data, query, update, data_manager):
             return ConversationHandler.END
-        chat_data["name"] = user.get("Name", "")
-        chat_data["email"] = user.get("Email", "")
-        chat_data["telegram"] = user.get("Telegram", "") or (
-            update.effective_user.username or ""
-        )
-        role_id_val = chat_data.get("role_id", "")
-        role_row = data_manager.get_role_by_id(
-            role_id_val if isinstance(role_id_val, str) else ""
-        )
-        role_for_confirm: ElectionStructureRow = (
-            role_row if role_row is not None else cast(ElectionStructureRow, {})
-        )
-        text, keyboard = _build_confirm_application_ui(chat_data, role_for_confirm)
+        role_row = data_manager.get_role_by_id(str(chat_data.get("role_id", "")))
+        if not role_row:
+            await query.edit_message_text("Role not found.")
+            return ConversationHandler.END
+        text, keyboard = _build_confirm_application_ui(chat_data, role_row)
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
         return CONFIRMING_APPLICATION
 

@@ -300,8 +300,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
     def get_role_by_id(self, role_id: str) -> Optional[ElectionStructureRow]:
         """Get a role by ID using cached roles."""
         all_roles = self.get_all_roles()
-        found = next((role for role in all_roles if role.get("ID") == role_id), None)
-        return found
+        return next((role for role in all_roles if role.get("ID") == role_id), None)
 
     @cached(cache=_applications_cache)  # type: ignore[untyped-decorator]
     def get_all_applications_from_sheets(self) -> List[ApplicationRow]:
@@ -340,7 +339,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                 for app in all_applications:
                     if (
                         app.get("Role_ID") == status_update.get("Role_ID")
-                        and app.get("Telegram_ID") == status_update.get("Telegram_ID")
+                        and str(app.get("Telegram_ID")) == str(status_update.get("Telegram_ID"))
                         and app.get("Status") not in ("DENIED", "REMOVED")
                     ):
                         if status_update.get("Status") is not None:
@@ -406,10 +405,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
             # Convert queue to list and clear queue
             applications_to_add = list(self.application_queue)
             self.application_queue.clear()
-
-            if len(applications_to_add) == 0:
-                logger.info("No new applications to add (all were duplicates)")
-                return True
 
             # Find the starting row for new applications
             start_row = len(self.applications_sheet.col_values(1)) + 1
@@ -777,9 +772,9 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
         """Get all users: sheet data plus queued upserts. Use this everywhere for immediate visibility of changes."""
         try:
             sheet_users = self.get_all_users_from_sheets()
-            if not self.user_upsert_queue:
-                return sheet_users
             result: List[UserRow] = list(sheet_users)
+            if not self.user_upsert_queue:
+                return result
             for queued in self.user_upsert_queue:
                 telegram_id = queued.get("Telegram_ID")
                 found = next(
@@ -861,7 +856,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                 "TRUE" if user.get("Show_On_Website_Consent") else "FALSE",
                 user.get("Updated_At"),
             ]
-            if user_row_index:
+            if user_row_index is not None:
                 batch_updates.append(
                     {
                         "range": f"A{user_row_index}:F{user_row_index}",

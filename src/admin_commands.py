@@ -3,18 +3,17 @@
 import logging
 import re
 from io import BytesIO, StringIO
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from telegram import Update
+from telegram import Message, Update
 from telegram.ext import ContextTypes
 
 from .config import ADMIN_CHAT_ID
 from .sheets_data_manager import DataManager
 from .types import (
+    ApplicationRow,
     ConsentedApplicant,
-    DivisionData,
     ElectionStructureRow,
-    RoleData,
     UserRow,
 )
 from .utils import create_fiirumi_link, get_notification_text, get_role_name
@@ -34,11 +33,11 @@ def parse_command_parameters(message_text: str, command: str) -> str:
         The parameters string without the command and @botname
     """
     # Remove the command from the beginning
-    text = message_text.replace(command, "", 1).strip()
+    text = message_text[len(command):].strip()
 
     # Remove @botname if present (handles both @botname and @botname_bot formats)
     # This regex matches @ followed by any word characters and optional _bot suffix
-    text = re.sub(r"@\w+(?:_bot)?\s*", "", text)
+    text = re.sub(r"^@\w+(?:_bot)?\s*", "", text)
 
     return text.strip()
 
@@ -119,21 +118,14 @@ async def remove_applicant(
         if message is None or not is_admin_chat(message.chat.id):
             return
 
-        text = parse_command_parameters(message.text or "", "/remove")
-        params = text.split(",")
-
-        try:
-            position = params[0].strip()
-            name = params[1].strip()
-        except Exception as e:
-            await message.reply_text("Invalid parameters - /remove <position>, <name>")
-            raise ValueError("Invalid parameters") from e
-
-        # Find position by Finnish or English name
-        role = data_manager.find_role_by_name(position)
-        if not role:
-            await message.reply_text(f"Unknown position: {position}")
+        result = await _parse_admin_role_names(
+            message, data_manager, "/remove", 1,
+            "Invalid parameters - /remove <position>, <name>",
+        )
+        if not result:
             return
+        role, names = result
+        name = names[0]
 
         success, app_data = data_manager.remove_applicant(role, name)
         if success and app_data:
@@ -141,8 +133,7 @@ async def remove_applicant(
 
             # Send notification to the removed applicant
             try:
-                user_language: Literal["fi", "en"] = app_data.get("Language") or "en"
-                is_finnish = user_language == "fi"
+                is_finnish = (app_data.get("Language") or "en") == "fi"
                 notification_text = get_notification_text(
                     "removed",
                     get_role_name(role, is_finnish),
@@ -156,10 +147,9 @@ async def remove_applicant(
                     parse_mode="HTML",
                 )
                 logger.info(
-                    "Sent removal notification to user %s for position %s in %s",
+                    "Sent removal notification to user %s for position %s",
                     app_data.get("Telegram_ID"),
                     role.get("Role_EN"),
-                    user_language,
                 )
             except Exception as e:
                 logger.error(
@@ -182,24 +172,14 @@ async def add_fiirumi_to_applicant(update: Update, data_manager: DataManager) ->
         if message is None or not is_admin_chat(message.chat.id):
             return
 
-        text = parse_command_parameters(message.text or "", "/add_fiirumi")
-        params = text.split(",")
-
-        try:
-            position = params[0].strip()
-            name = params[1].strip()
-            thread_id = params[2].strip()
-        except Exception as e:
-            await message.reply_text(
-                "Invalid parameters - /add_fiirumi <position>, <name>, <thread_id>",
-            )
-            raise ValueError("Invalid parameters") from e
-
-        # Find position by Finnish or English name
-        found_position = data_manager.find_role_by_name(position)
-        if not found_position:
-            await message.reply_text(f"Unknown position: {position}")
+        result = await _parse_admin_role_names(
+            message, data_manager, "/add_fiirumi", 2,
+            "Invalid parameters - /add_fiirumi <position>, <name>, <thread_id>",
+        )
+        if not result:
             return
+        found_position, names = result
+        name, thread_id = names[0], names[1]
 
         fiirumi = create_fiirumi_link(thread_id)
         success = data_manager.set_applicant_fiirumi(found_position, name, fiirumi)
@@ -223,23 +203,14 @@ async def unassociate_fiirumi(update: Update, data_manager: DataManager) -> None
         if message is None or not is_admin_chat(message.chat.id):
             return
 
-        text = parse_command_parameters(message.text or "", "/remove_fiirumi")
-        params = [arg.strip() for arg in text.split(",")]
-
-        try:
-            position, name = params
-        except Exception as e:
-            logger.error(e)
-            await message.reply_text(
-                "Invalid parameters - /remove_fiirumi <position>, <name>"
-            )
+        result = await _parse_admin_role_names(
+            message, data_manager, "/remove_fiirumi", 1,
+            "Invalid parameters - /remove_fiirumi <position>, <name>",
+        )
+        if not result:
             return
-
-        # Find position by Finnish or English name
-        role = data_manager.find_role_by_name(position)
-        if not role:
-            await message.reply_text(f"Unknown position: {position}")
-            return
+        role, names = result
+        name = names[0]
 
         success = data_manager.set_applicant_fiirumi(role, name, "")
         if not success:
@@ -256,7 +227,7 @@ async def unassociate_fiirumi(update: Update, data_manager: DataManager) -> None
 
 
 async def _parse_admin_role_names(
-    msg: Any,
+    msg: Message,
     data_manager: DataManager,
     command: str,
     min_names: int,
@@ -352,16 +323,15 @@ async def combine_applicants(
 
 def _write_officials_role_row(
     output: StringIO,
-    division_data: DivisionData,
-    role_data: RoleData,
+    role: ElectionStructureRow,
     consented_applicants: List[ConsentedApplicant],
 ) -> None:
-    """Write one division/role row and its applicants to the CSV output."""
+    """Write one role row and its applicants to the CSV output."""
     output.write(
-        f'"{division_data.get("Division_FI")}",'
-        f'"{division_data.get("Division_EN")}",'
-        f'"{role_data.get("Role_FI")}",'
-        f'"{role_data.get("Role_EN")}"'
+        f'"{role.get("Division_FI")}",'
+        f'"{role.get("Division_EN")}",'
+        f'"{role.get("Role_FI")}",'
+        f'"{role.get("Role_EN")}"'
     )
     for applicant_data in consented_applicants:
         name = applicant_data["name"]
@@ -371,9 +341,9 @@ def _write_officials_role_row(
 
 
 def _consented_applicants_for_role_unmerged(
-    data_manager: DataManager,
+    all_applications: List[ApplicationRow],
     role_id: str,
-    role_data: RoleData,
+    role: ElectionStructureRow,
     users_by_id: Dict[int, UserRow],
 ) -> Tuple[List[ConsentedApplicant], int]:
     """Return (list of {name, telegram}, skipped_count) from unmerged applications.
@@ -381,10 +351,9 @@ def _consented_applicants_for_role_unmerged(
     """
     consented: List[ConsentedApplicant] = []
     skipped = 0
-    all_apps = data_manager.get_all_applications()
     elected = [
         a
-        for a in all_apps
+        for a in all_applications
         if a.get("Role_ID") == role_id and a.get("Status") == "ELECTED"
     ]
     for app in elected:
@@ -393,7 +362,7 @@ def _consented_applicants_for_role_unmerged(
             skipped += 1
             logger.debug(
                 "Skipping elected user (no Users row) for role %s",
-                role_data.get("Role_EN"),
+                role.get("Role_EN"),
             )
             continue
         if not user.get("Show_On_Website_Consent", False):
@@ -401,7 +370,7 @@ def _consented_applicants_for_role_unmerged(
             logger.info(
                 "Skipping official %s (role: %s) - no website consent",
                 user.get("Name"),
-                role_data.get("Role_EN"),
+                role.get("Role_EN"),
             )
             continue
         consented.append(
@@ -428,22 +397,20 @@ async def export_officials_website(update: Update, data_manager: DataManager) ->
         output = StringIO()
         all_users = data_manager.get_all_users()
         users_by_id = {user.get("Telegram_ID"): user for user in all_users}
+        all_applications = data_manager.get_all_applications()
         skipped_count = 0
 
-        for division_data in data_manager.vaalilakana_full:
-            for role_data in division_data.get("Roles", []):
-                if role_data.get("Type") == "BOARD":
-                    continue
-                role_id = role_data.get("ID", "")
-                consented_applicants, skipped = _consented_applicants_for_role_unmerged(
-                    data_manager, role_id, role_data, users_by_id
-                )
-                skipped_count += skipped
-                if not consented_applicants:
-                    continue
-                _write_officials_role_row(
-                    output, division_data, role_data, consented_applicants
-                )
+        for role in data_manager.get_all_roles():
+            if role.get("Type") == "BOARD":
+                continue
+            role_id = role.get("ID", "")
+            consented_applicants, skipped = _consented_applicants_for_role_unmerged(
+                all_applications, role_id, role, users_by_id
+            )
+            skipped_count += skipped
+            if not consented_applicants:
+                continue
+            _write_officials_role_row(output, role, consented_applicants)
 
         output.seek(0)
         csv_bytes = BytesIO(output.getvalue().encode("utf-8"))

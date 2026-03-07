@@ -2,13 +2,14 @@
 
 import logging
 from datetime import datetime
-from typing import List, Optional, Tuple, cast
+from typing import List, Optional, Tuple
 import requests
 from telegram.ext import ContextTypes
 
 from .sheets_data_manager import DataManager
 from .types import DivisionData, RoleData
-from .config import API_KEY, API_USERNAME, VAALILAKANA_POST_URL
+from .config import VAALILAKANA_POST_URL
+from .fiirumi_area_generator import get_discourse_headers
 
 YEAR = datetime.now().year
 SHEET_MARKER = "---SHEET STARTS HERE---"
@@ -19,15 +20,12 @@ logger = logging.getLogger("vaalilakanabot")
 def get_current_post_content() -> Optional[str]:
     """Fetch the current content of the election sheet post."""
     try:
-        headers = {
-            "Api-Key": API_KEY,
-            "Api-Username": API_USERNAME,
-        }
-        response = requests.get(VAALILAKANA_POST_URL, headers=headers, timeout=30)
+        response = requests.get(
+            VAALILAKANA_POST_URL, headers=get_discourse_headers(), timeout=30
+        )
         response.raise_for_status()
         data = response.json()
-        raw = data.get("raw", "")
-        return cast(Optional[str], raw)
+        return data.get("raw", "")
     except Exception as e:
         logger.error("Error fetching current post content: %s", e)
         return None
@@ -135,11 +133,6 @@ async def update_election_sheet(
             logger.info(
                 "Found preamble marker, preserving preamble (%d chars)", len(preamble)
             )
-        elif preamble:
-            # If there's content but no marker found, don't preserve anything
-            # to avoid accidentally preserving old sheet data as preamble
-            logger.info("No marker found in existing post, not preserving content")
-            preamble = ""
 
     # Build final content
     if has_marker:
@@ -150,12 +143,6 @@ async def update_election_sheet(
     else:
         final_text = sheet_content
 
-    headers = {
-        "Api-Key": API_KEY,
-        "Api-Username": API_USERNAME,
-        "Content-Type": "application/json",
-    }
-
     payload = {
         "raw": final_text,
     }
@@ -163,7 +150,7 @@ async def update_election_sheet(
     try:
         response = requests.put(
             VAALILAKANA_POST_URL,
-            headers=headers,
+            headers=get_discourse_headers(),
             json=payload,
             timeout=30,
         )

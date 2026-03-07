@@ -84,10 +84,6 @@ class ChannelRow(TypedDict):
     Channel_ID: int
 
 
-class ApprovalResult(TypedDict):
-    """Result of an approval/rejection action."""
-
-    status: str  # "approved" or "rejected"
 
 
 class ApplicationWithDisplay(ApplicationRow):

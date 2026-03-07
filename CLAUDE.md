@@ -32,7 +32,7 @@ docker-compose -f docker-compose.prod.yml up
 
 ```bash
 pip install pylint
-pylint *.py
+pylint src/*.py
 ```
 
 ## Architecture
@@ -265,12 +265,12 @@ Admins can add roles directly in Google Sheets without bot commands:
 - **Commands**: `/register` (English) and `/rekisteröidy` (Finnish), private chat only. Implemented in **src/register_handlers.py**.
 - **Flow**: User is asked for full name, email, and consent (show on website's official page Yes/No). Data is upserted into the Users sheet. Running the command again shows an update intro and the same steps, then overwrites the user row.
 - **Gating**: Applying (`/hae`, `/apply`) and viewing applications (`/hakemukset`, `/applications`) require the user to exist in the Users sheet; otherwise the bot replies with a prompt to register first.
-- **Application data**: Applications store only `Telegram_ID` (and application fields). Name, email, and Telegram handle are resolved from the Users sheet via `DataManager.get_applicant_display()` and by enriching applicant lists in `get_election_data()`. Admin approval and admin commands (remove, elected, fiirumi, combine) resolve names from Users by `Telegram_ID`.
+- **Application data**: Applications store only `Telegram_ID` (and application fields). Name, email, and Telegram handle are resolved from the Users sheet via `DataManager.get_applicant_display()` and by enriching applicant lists in `_applicants_for_role_enriched()` (called via the `vaalilakana_full` property in `sheets_data_manager.py`). Admin approval and admin commands (remove, elected, fiirumi, combine) resolve names from Users by `Telegram_ID`.
 - **Caching**: Users sheet is cached and invalidated with the rest after queue flush; `user_upsert_queue` is flushed first so users exist before new applications reference them.
 
 ## Group Applications
 
 - **Linking**: When applicants apply together for the same role, they tell the admins; an admin runs `/combine <position>, <name1>, <name2>, ...` in the admin chat. The bot assigns a shared `Group_ID` (UUID) to all listed applications for that role. Names are resolved from the Users sheet.
-- **Display**: In election data, applicants with the same non-empty `Group_ID` are merged into one display entry: names appear on one line (e.g. "Name1, Name2") and one Fiirumi link is used if any. Implemented in `get_election_data()` in **src/sheets_manager.py**.
+- **Display**: In election data, applicants with the same non-empty `Group_ID` are merged into one display entry: names appear on one line (e.g. "Name1, Name2") and one Fiirumi link is used if any. Implemented in `_applicants_for_role_enriched()` in **src/sheets_data_manager.py**.
 - **Electing**: To mark a group as elected, the admin must list **all** members: `/elected <position>, <name1>, <name2>, ...`. If any member of the group is missing from the list, the bot returns an error asking to list all members. Implemented in `DataManager.set_applicants_elected()` and the `/elected` handler in **src/admin_commands.py**.
 - **Data**: Applications sheet has a `Group_ID` column; status updates (including `group_id`) are queued and flushed with `status_update_queue`. No separate combining-info column.
