@@ -136,15 +136,15 @@ async def _notify_applicant(
     context: ContextTypes.DEFAULT_TYPE,
     user_id: int,
     role_row: ElectionStructureRow,
-    language: Literal["fi", "en"],
+    is_finnish: bool,
     kind: Literal["approved", "rejected"],
 ) -> None:
     """Send approval or rejection notification to the applicant."""
     try:
         text = get_notification_text(
             kind,
-            get_role_name(role_row, language != "en"),
-            language,
+            get_role_name(role_row, is_finnish),
+            is_finnish,
         )
         await context.bot.send_message(chat_id=user_id, text=text, parse_mode="HTML")
     except Exception as e:
@@ -219,9 +219,9 @@ async def handle_admin_approval(
                 parse_mode="HTML",
             )
             lang = (application.get("Language") or "").strip().lower()
-            language: Literal["fi", "en"] = "fi" if lang == "fi" else "en"
+            is_finnish = lang == "fi"
             await _notify_applicant(
-                context, telegram_id, role_row, language, "approved"
+                context, telegram_id, role_row, is_finnish, "approved"
             )
             await announce_to_channels(
                 f"<b>Uusi nimi vaalilakanassa!</b>\n"
@@ -247,6 +247,6 @@ async def handle_admin_approval(
         else:
             await query.edit_message_text("❌ Error rejecting application.")
         lang = (application.get("Language") or "").strip().lower()
-        language = "fi" if lang == "fi" else "en"
-        await _notify_applicant(context, telegram_id, role_row, language, "rejected")
+        is_finnish = lang == "fi"
+        await _notify_applicant(context, telegram_id, role_row, is_finnish, "rejected")
         logger.info("Application %s rejected by admin", application_ref)

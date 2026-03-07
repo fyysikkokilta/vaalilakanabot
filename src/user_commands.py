@@ -9,7 +9,6 @@ from telegram.ext import ContextTypes
 from .types import ApplicationRow, ElectionStructureRow
 from .utils import (
     vaalilakana_to_string,
-    send_sticker,
     map_application_status,
     get_translation,
 )
@@ -118,9 +117,7 @@ async def register_channel(update: Update, data_manager: DataManager) -> None:
     try:
         chat_id = message.chat.id
         data_manager.add_channel(chat_id)
-        await message.reply_text(
-            "Registered as Vaalilakanabot announcement channel!"
-        )
+        await message.reply_text("Registered as Vaalilakanabot announcement channel!")
     except Exception as e:
         logger.error(e)
 
@@ -184,8 +181,10 @@ def _render_applications(
     return text
 
 
-async def applications_en(update: Update, data_manager: DataManager) -> None:
-    """Show the current user's applications (English)."""
+async def _show_applications(
+    update: Update, data_manager: DataManager, is_finnish: bool
+) -> None:
+    """Show the current user's applications."""
     message = update.message
     if message is None or update.effective_user is None:
         return
@@ -193,106 +192,55 @@ async def applications_en(update: Update, data_manager: DataManager) -> None:
         user_id = update.effective_user.id
         if not data_manager.get_user_by_telegram_id(user_id):
             await message.reply_text(
-                get_translation("please_register_first", is_finnish=False)
+                get_translation("please_register_first", is_finnish=is_finnish)
             )
             return
 
-        # Fetch user's application rows
         app_rows = data_manager.get_applications_for_user(user_id)
         if not app_rows:
             await message.reply_text(
-                get_translation("no_applications", is_finnish=False)
+                get_translation("no_applications", is_finnish=is_finnish)
             )
             return
 
         roles = data_manager.get_all_roles()
-        text = _render_applications(roles, app_rows, is_finnish=False)
+        text = _render_applications(roles, app_rows, is_finnish=is_finnish)
         await message.reply_html(text, disable_web_page_preview=True)
     except Exception as e:
         logger.error(e)
 
 
+async def applications_en(update: Update, data_manager: DataManager) -> None:
+    """Show the current user's applications (English)."""
+    await _show_applications(update, data_manager, is_finnish=False)
+
+
 async def applications(update: Update, data_manager: DataManager) -> None:
     """Näytä käyttäjän omat hakemukset (suomeksi)."""
-    message = update.message
-    if message is None or update.effective_user is None:
+    await _show_applications(update, data_manager, is_finnish=True)
+
+
+async def _show_election_sheet(
+    update: Update, data_manager: DataManager, is_finnish: bool
+) -> None:
+    """Show the current election sheet."""
+    if update.message is None:
         return
     try:
-        user_id = update.effective_user.id
-        if not data_manager.get_user_by_telegram_id(user_id):
-            await message.reply_text(
-                get_translation("please_register_first", is_finnish=True)
-            )
-            return
-
-        app_rows = data_manager.get_applications_for_user(user_id)
-        if not app_rows:
-            await message.reply_text(
-                get_translation("no_applications", is_finnish=True)
-            )
-            return
-
-        roles = data_manager.get_all_roles()
-        text = _render_applications(roles, app_rows, is_finnish=True)
-        await message.reply_html(text, disable_web_page_preview=True)
+        text = vaalilakana_to_string(data_manager.vaalilakana, is_finnish)
+        await update.message.reply_html(text, disable_web_page_preview=True)
     except Exception as e:
         logger.error(e)
 
 
 async def show_election_sheet(update: Update, data_manager: DataManager) -> None:
     """Show the current vaalilakana."""
-    if update.message is None:
-        return
-    try:
-        vaalilakana_text = vaalilakana_to_string(data_manager.vaalilakana, "fi")
-        await update.message.reply_html(
-            vaalilakana_text,
-            disable_web_page_preview=True,
-        )
-    except Exception as e:
-        logger.error(e)
+    await _show_election_sheet(update, data_manager, is_finnish=True)
 
 
 async def show_election_sheet_en(update: Update, data_manager: DataManager) -> None:
     """Show the current election sheet in English."""
-    message = update.message
-    if message is None:
-        return
-    try:
-        election_sheet_text = vaalilakana_to_string(data_manager.vaalilakana, "en")
-        await message.reply_html(
-            election_sheet_text,
-            disable_web_page_preview=True,
-        )
-    except Exception as e:
-        logger.error(e)
+    await _show_election_sheet(update, data_manager, is_finnish=False)
 
 
-async def jauhis(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send jauhis sticker."""
-    await send_sticker(update, "jauhis")
-
-
-async def jauh(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send jauh sticker."""
-    await send_sticker(update, "jauh")
-
-
-async def jauho(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send jauho sticker."""
-    await send_sticker(update, "jauho")
-
-
-async def lauh(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send lauh sticker."""
-    await send_sticker(update, "lauh")
-
-
-async def mauh(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send mauh sticker."""
-    await send_sticker(update, "mauh")
-
-
-async def yauh(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send yauh sticker."""
-    await send_sticker(update, "yauh")
+STICKER_COMMANDS = ["jauhis", "jauh", "jauho", "lauh", "mauh", "yauh"]

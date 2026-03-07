@@ -497,6 +497,14 @@ class DataManager:
         """Invalidate sheet caches so next reads refetch from the sheet."""
         self.sheets_manager.invalidate_caches()
 
+    def flush_all_queues(self) -> None:
+        """Flush all queues and invalidate caches."""
+        self.flush_user_queue()
+        self.flush_application_queue()
+        self.flush_status_update_queue()
+        self.flush_channel_queue()
+        self.invalidate_caches()
+
     @property
     def channels(self) -> List[ChannelRow]:
         """Get all registered channels."""

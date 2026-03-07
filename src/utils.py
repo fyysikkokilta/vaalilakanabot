@@ -9,7 +9,13 @@ from gspread.exceptions import APIError
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 
 from .config import BASE_URL
-from .types import ApplicationRow, ApplicationStatus, ElectionStructureRow, RoleData, UserRow
+from .types import (
+    ApplicationRow,
+    ApplicationStatus,
+    ElectionStructureRow,
+    RoleData,
+    UserRow,
+)
 
 logger = logging.getLogger("vaalilakanabot")
 T = TypeVar("T")
@@ -149,15 +155,11 @@ def get_role_name(role: ElectionStructureRow, is_finnish: bool) -> str:
     return role.get("Role_EN") if not is_finnish else role.get("Role_FI")
 
 
-def vaalilakana_to_string(
-    vaalilakana: List[RoleData], language: Literal["fi", "en"]
-) -> str:
+def vaalilakana_to_string(vaalilakana: List[RoleData], is_finnish: bool) -> str:
     """Build vaalilakana message in the requested language (fi|en).
 
     Input: flat mapping of position -> role_data.
     """
-    is_finnish = language.lower() != "en"
-
     headings = {
         "board": (
             "<b>---------------Raati---------------</b>\n"
@@ -247,11 +249,9 @@ def map_application_status(status: ApplicationStatus, is_finnish: bool = True) -
 def get_notification_text(
     notification_type: Literal["approved", "rejected", "removed", "elected"],
     position: str,
-    language: Literal["fi", "en"],
+    is_finnish: bool,
 ) -> str:
     """Get standardized notification text for different scenarios."""
-    is_finnish = language == "fi"
-
     notifications = {
         "approved": (
             f"✅ <b>Hakemuksesi on hyväksytty!</b>\n\n"

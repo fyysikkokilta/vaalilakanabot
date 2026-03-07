@@ -1,7 +1,6 @@
 """Application conversation handlers."""
 
 import logging
-import re
 from datetime import datetime
 from typing import Any, Dict, Tuple, Union, cast
 
@@ -19,13 +18,6 @@ from .admin_approval import send_admin_approval_request
 from .sheets_data_manager import DataManager
 
 logger = logging.getLogger("vaalilakanabot")
-
-
-def is_valid_email(email: str) -> bool:
-    """Basic email format validation."""
-    # Simple regex pattern for basic email validation
-    pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    return bool(re.match(pattern, email))
 
 
 async def hae(

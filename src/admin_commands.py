@@ -3,14 +3,20 @@
 import logging
 import re
 from io import BytesIO, StringIO
-from typing import Dict, List, Literal, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from .config import ADMIN_CHAT_ID
 from .sheets_data_manager import DataManager
-from .types import ConsentedApplicant, DivisionData, RoleData, UserRow
+from .types import (
+    ConsentedApplicant,
+    DivisionData,
+    ElectionStructureRow,
+    RoleData,
+    UserRow,
+)
 from .utils import create_fiirumi_link, get_notification_text, get_role_name
 
 logger = logging.getLogger("vaalilakanabot")
@@ -136,10 +142,11 @@ async def remove_applicant(
             # Send notification to the removed applicant
             try:
                 user_language: Literal["fi", "en"] = app_data.get("Language") or "en"
+                is_finnish = user_language == "fi"
                 notification_text = get_notification_text(
                     "removed",
-                    get_role_name(role, user_language != "en"),
-                    user_language,
+                    get_role_name(role, is_finnish),
+                    is_finnish,
                 )
 
                 telegram_id = app_data.get("Telegram_ID")
@@ -248,31 +255,54 @@ async def unassociate_fiirumi(update: Update, data_manager: DataManager) -> None
         logger.error(e)
 
 
+async def _parse_admin_role_names(
+    msg: Any,
+    data_manager: DataManager,
+    command: str,
+    min_names: int,
+    usage: str,
+) -> Optional[Tuple[ElectionStructureRow, List[str]]]:
+    """Parse '/cmd <position>, <name1>, ...' and resolve role.
+
+    Returns (role, names) or None if validation failed (error already replied).
+    """
+    text = parse_command_parameters(msg.text or "", command)
+    params = [p.strip() for p in text.split(",") if p.strip()]
+
+    if len(params) < 1 + min_names:
+        await msg.reply_text(usage)
+        return None
+
+    position = params[0]
+    names = params[1:]
+
+    role = data_manager.find_role_by_name(position)
+    if not role:
+        await msg.reply_text(f"Unknown position: {position}")
+        return None
+
+    return role, names
+
+
 async def add_elected_tag(
     update: Update, _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> None:
-    """Mark applicant(s) as elected. For group applications, list all members: /elected <position>, <name1>, <name2>, ..."""
+    """Mark applicant(s) as elected. For group applications, list all members."""
     try:
         msg = update.message
         if msg is None or not is_admin_chat(msg.chat.id):
             return
 
-        text = parse_command_parameters(msg.text or "", "/elected")
-        params = [p.strip() for p in text.split(",") if p.strip()]
-
-        if len(params) < 2:
-            await msg.reply_text(
-                "Usage: /elected <position>, <name> or /elected <position>, <name1>, <name2>, ... (for groups list all members)"
-            )
+        result = await _parse_admin_role_names(
+            msg,
+            data_manager,
+            "/elected",
+            1,
+            "Usage: /elected <position>, <name> or /elected <position>, <name1>, <name2>, ... (for groups list all members)",
+        )
+        if not result:
             return
-
-        position = params[0]
-        names = params[1:]
-
-        role = data_manager.find_role_by_name(position)
-        if not role:
-            await msg.reply_text(f"Unknown position: {position}")
-            return
+        role, names = result
 
         success, reply_text = data_manager.set_applicants_elected(role, names)
         await msg.reply_text(reply_text)
@@ -290,28 +320,22 @@ async def add_elected_tag(
 async def combine_applicants(
     update: Update, _: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> None:
-    """Link applicants for a role as a group (same Group_ID). Usage: /combine <position>, <name1>, <name2>, ..."""
+    """Link applicants for a role as a group (same Group_ID)."""
     try:
         msg = update.message
         if msg is None or not is_admin_chat(msg.chat.id):
             return
 
-        text = parse_command_parameters(msg.text or "", "/combine")
-        params = [p.strip() for p in text.split(",") if p.strip()]
-
-        if len(params) < 3:
-            await msg.reply_text(
-                "Usage: /combine <position>, <name1>, <name2>, ... (at least 2 names)"
-            )
+        result = await _parse_admin_role_names(
+            msg,
+            data_manager,
+            "/combine",
+            2,
+            "Usage: /combine <position>, <name1>, <name2>, ... (at least 2 names)",
+        )
+        if not result:
             return
-
-        position = params[0]
-        names = params[1:]
-
-        role = data_manager.find_role_by_name(position)
-        if not role:
-            await msg.reply_text(f"Unknown position: {position}")
-            return
+        role, names = result
 
         success, reply_text = data_manager.combine_applicants(role, names)
         await msg.reply_text(reply_text)
