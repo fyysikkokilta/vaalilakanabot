@@ -158,43 +158,43 @@ class DataManager:
         return self.get_user_by_telegram_id(app.get("Telegram_ID"))
 
     def get_applicant_display_names_for_announcement(
-        self, role_id: str, application: ApplicationRow
+        self,
+        role_id: str,
+        application: ApplicationRow,
+        users_by_id: Optional[Dict[int, UserRow]] = None,
     ) -> str:
         """Display name for announcements: single name or 'Name1, Name2' for groups."""
         group_id = get_group_id(application)
 
         # Single applicant (not in a group)
         if not group_id:
-            user = self.get_applicant_display(application)
+            if users_by_id is not None:
+                user = users_by_id.get(application.get("Telegram_ID"))
+            else:
+                user = self.get_applicant_display(application)
             return get_user_name(user, "")
 
         # Group application - get all member names
         group_apps = self._get_applications_for_group(role_id, group_id)
-        names = [
-            get_user_name(self.get_applicant_display(app), "(?)") for app in group_apps
-        ]
+        if users_by_id is not None:
+            names = [
+                get_user_name(users_by_id.get(app.get("Telegram_ID")), "(?)")
+                for app in group_apps
+            ]
+        else:
+            names = [
+                get_user_name(self.get_applicant_display(app), "(?)")
+                for app in group_apps
+            ]
         return ", ".join(sorted(names))
 
     def get_applicant_display_names_for_role_and_name(
         self, role: ElectionStructureRow, applicant_name: str
     ) -> str:
         """Resolve display name(s) for a role+name (single or group). For use in replies."""
-        apps = self._get_applications_by_role_and_display_name(role, applicant_name)
-
-        # If not found by display name, try by single name
-        if not apps:
-            app = self._get_applicant_by_role_and_name(role, applicant_name)
-            if app is not None:
-                group_id = get_group_id(app)
-                apps = (
-                    self._get_applications_for_group(role.get("ID"), group_id)
-                    if group_id
-                    else [app]
-                )
-
+        apps = self._resolve_applications_by_name(role, applicant_name)
         if not apps:
             return applicant_name
-
         return self.get_applicant_display_names_for_announcement(
             role.get("ID"), apps[0]
         )
@@ -210,52 +210,54 @@ class DataManager:
             role_apps = self._get_applications_for_role(role_id)
         return [app for app in role_apps if get_group_id(app) == normalized_group_id]
 
-    def _get_applicant_by_role_and_name(
-        self, role: ElectionStructureRow, applicant_name: str
-    ) -> Optional[ApplicationRow]:
-        """Find an application for this role by applicant name (resolved from Users sheet)."""
-        applications = self._get_applications_for_role(role.get("ID", ""))
-        for app in applications:
-            display = self.get_applicant_display(app)
-            if display is not None and display.get("Name") == applicant_name:
-                return app
-        return None
-
-    def _get_group_applications_by_merged_name(
-        self, role_id: str, merged_name: str
+    def _resolve_applications_by_name(
+        self,
+        role: ElectionStructureRow,
+        name: str,
+        users_by_id: Optional[Dict[int, UserRow]] = None,
     ) -> List[ApplicationRow]:
-        """Find group applications whose combined names match 'Name1, Name2' format."""
-        target_names = frozenset(name.strip() for name in merged_name.split(","))
-        applications = self._get_applications_for_role(role_id)
+        """Resolve name (single or 'Name1, Name2') to application(s) for a role.
 
-        for app in applications:
-            group_id = get_group_id(app)
-            if not group_id:
-                continue
-
-            group_apps = self._get_applications_for_group(role_id, group_id, role_apps=applications)
-            group_names = frozenset(
-                get_user_name(self.get_applicant_display(a), "") for a in group_apps
-            )
-
-            if group_names == target_names:
-                return group_apps
-
-        return []
-
-    def _get_applications_by_role_and_display_name(
-        self, role: ElectionStructureRow, display_name: str
-    ) -> List[ApplicationRow]:
-        """Resolve to list of applications: single name -> [app] or []; merged 'Name1, Name2' -> group members."""
+        For single names: finds the application whose user Name matches.
+        For comma-separated names: finds the group whose member names match exactly.
+        Always expands to full group if the matched app is in a group.
+        """
         role_id = role.get("ID", "")
+        role_apps = self._get_applications_for_role(role_id)
+        if users_by_id is None:
+            users_by_id = self._build_users_by_id()
 
-        # Check if this is a merged group name (contains comma)
-        if ", " in display_name:
-            return self._get_group_applications_by_merged_name(role_id, display_name)
+        # Comma-separated → group lookup
+        if ", " in name:
+            target_names = frozenset(n.strip() for n in name.split(","))
+            seen_groups: set[str] = set()
+            for app in role_apps:
+                gid = get_group_id(app)
+                if not gid or gid in seen_groups:
+                    continue
+                seen_groups.add(gid)
+                group_apps = self._get_applications_for_group(
+                    role_id, gid, role_apps=role_apps
+                )
+                group_names = frozenset(
+                    get_user_name(users_by_id.get(a.get("Telegram_ID")), "")
+                    for a in group_apps
+                )
+                if group_names == target_names:
+                    return group_apps
+            return []
 
-        # Single name lookup
-        found_app = self._get_applicant_by_role_and_name(role, display_name)
-        return [found_app] if found_app is not None else []
+        # Single name → find matching app, expand to group if applicable
+        for app in role_apps:
+            user = users_by_id.get(app.get("Telegram_ID"))
+            if user is not None and user.get("Name") == name:
+                gid = get_group_id(app)
+                if gid:
+                    return self._get_applications_for_group(
+                        role_id, gid, role_apps=role_apps
+                    )
+                return [app]
+        return []
 
     def add_applicant(
         self,
@@ -275,10 +277,11 @@ class DataManager:
             Tuple of (success: bool, application_data or None)
             application_data contains the removed application info for notification purposes
         """
-        app = self._get_applicant_by_role_and_name(role, applicant_name)
-        if not app:
+        apps = self._resolve_applications_by_name(role, applicant_name)
+        if not apps:
             return False, None
 
+        app = apps[0]
         telegram_id = app.get("Telegram_ID")
         role_id = role.get("ID", "")
         success = self.sheets_manager.update_application_status(
@@ -292,53 +295,41 @@ class DataManager:
     ) -> bool:
         """Set the fiirumi link for an applicant (or whole group). Name can be single or 'Name1, Name2'."""
         role_id = role.get("ID", "")
-        apps = self._get_applications_by_role_and_display_name(role, applicant_name)
-
-        # Try single name lookup if display name didn't match
+        apps = self._resolve_applications_by_name(role, applicant_name)
         if not apps:
-            app = self._get_applicant_by_role_and_name(role, applicant_name)
-            if not app:
-                return False
+            return False
 
-            group_id = get_group_id(app)
-            apps = (
-                self._get_applications_for_group(role_id, group_id)
-                if group_id
-                else [app]
-            )
-
-        # If single app is in a group, update entire group
-        if len(apps) == 1:
-            group_id = get_group_id(apps[0])
-            if group_id:
-                apps = self._get_applications_for_group(role_id, group_id)
-
-        # Update all applications
         for app in apps:
             self.sheets_manager.update_application_status(
                 role_id, app.get("Telegram_ID"), fiirumi_post=fiirumi_link
             )
-
         return True
 
     def set_applicant_elected(
         self, role: ElectionStructureRow, applicant_name: str
     ) -> bool:
         """Mark an applicant as elected by setting Status="ELECTED". Name is resolved from Users sheet."""
-        app = self._get_applicant_by_role_and_name(role, applicant_name)
-        if not app:
+        apps = self._resolve_applications_by_name(role, applicant_name)
+        if not apps:
             return False
         return self.sheets_manager.update_application_status(
-            role.get("ID"), app.get("Telegram_ID"), status="ELECTED"
+            role.get("ID"), apps[0].get("Telegram_ID"), status="ELECTED"
         )
 
     def _validate_group_completeness(
-        self, apps: List[ApplicationRow], names_set: set[str], role_id: str
+        self,
+        apps: List[ApplicationRow],
+        names_set: set[str],
+        role_id: str,
+        users_by_id: Optional[Dict[int, UserRow]] = None,
     ) -> Optional[str]:
         """Validate that all group members are included when electing groups.
 
         Returns error message if validation fails, None if OK.
         """
+        if users_by_id is None:
+            users_by_id = self._build_users_by_id()
+
         for app in apps:
             group_id = get_group_id(app)
             if not group_id:
@@ -347,7 +338,8 @@ class DataManager:
             # Get all applications in this group
             group_apps = self._get_applications_for_group(role_id, group_id)
             group_names = {
-                get_user_name(self.get_applicant_display(a), "") for a in group_apps
+                get_user_name(users_by_id.get(a.get("Telegram_ID")), "")
+                for a in group_apps
             }
 
             # Check if all group members are in the command
@@ -372,14 +364,15 @@ class DataManager:
             return False, "At least one name is required."
 
         role_id = role.get("ID")
+        users_by_id = self._build_users_by_id()
         apps: List[ApplicationRow] = []
         missing: List[str] = []
 
         # Find all applications by name
         for name in names:
-            app = self._get_applicant_by_role_and_name(role, name)
-            if app:
-                apps.append(app)
+            resolved = self._resolve_applications_by_name(role, name, users_by_id)
+            if resolved:
+                apps.append(resolved[0])
             else:
                 missing.append(name)
 
@@ -387,8 +380,10 @@ class DataManager:
             return False, f"Could not find applicant(s): {', '.join(missing)}"
 
         # Validate group completeness
-        names_set = {get_user_name(self.get_applicant_display(a), "") for a in apps}
-        error_msg = self._validate_group_completeness(apps, names_set, role_id)
+        names_set = set(names)
+        error_msg = self._validate_group_completeness(
+            apps, names_set, role_id, users_by_id
+        )
         if error_msg:
             return False, error_msg
 
@@ -413,14 +408,15 @@ class DataManager:
             return False, "At least two names are required to combine."
 
         role_id = role.get("ID")
+        users_by_id = self._build_users_by_id()
         apps: List[ApplicationRow] = []
         missing: List[str] = []
 
         # Find all applications by name
         for name in names:
-            app = self._get_applicant_by_role_and_name(role, name)
-            if app:
-                apps.append(app)
+            resolved = self._resolve_applications_by_name(role, name, users_by_id)
+            if resolved:
+                apps.append(resolved[0])
             else:
                 missing.append(name)
 
