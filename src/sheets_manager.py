@@ -339,7 +339,8 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                 for app in all_applications:
                     if (
                         app.get("Role_ID") == status_update.get("Role_ID")
-                        and str(app.get("Telegram_ID")) == str(status_update.get("Telegram_ID"))
+                        and str(app.get("Telegram_ID"))
+                        == str(status_update.get("Telegram_ID"))
                         and app.get("Status") not in ("DENIED", "REMOVED")
                     ):
                         if status_update.get("Status") is not None:
@@ -419,7 +420,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                     app.get("Fiirumi_Post"),
                     app.get("Status"),
                     app.get("Language"),
-                    app.get("Group_ID", ""),
+                    app.get("Group_ID"),
                 ]
                 batch_data.append(row_data)
 
@@ -746,8 +747,16 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
             )
             result: List[UserRow] = []
             for record in all_data:
+                raw_id = record.get("Telegram_ID", "")
+                try:
+                    telegram_id = int(raw_id)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "Skipping user row with invalid Telegram_ID: %r", raw_id
+                    )
+                    continue
                 user = UserRow(
-                    Telegram_ID=int(record.get("Telegram_ID", 0)),
+                    Telegram_ID=telegram_id,
                     Name=record.get("Name", ""),
                     Email=record.get("Email", ""),
                     Telegram=record.get("Telegram", ""),

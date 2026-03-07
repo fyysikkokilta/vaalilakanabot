@@ -28,7 +28,7 @@ def get_current_post_content() -> Optional[str]:
         return str(data.get("raw", ""))
     except Exception as e:
         logger.error("Error fetching current post content: %s", e)
-        return ""
+        return None
 
 
 def extract_preamble_and_content(full_text: str) -> Tuple[str, bool]:
@@ -124,15 +124,18 @@ async def update_election_sheet(
 
     # Fetch current post to check for preamble
     current_content = get_current_post_content()
-    preamble = ""
-    has_marker = False
+    if current_content is None:
+        logger.warning(
+            "Skipping election sheet update: could not fetch current post content "
+            "(API error). Preamble preservation requires a successful fetch."
+        )
+        return None
 
-    if current_content:
-        preamble, has_marker = extract_preamble_and_content(current_content)
-        if has_marker:
-            logger.info(
-                "Found preamble marker, preserving preamble (%d chars)", len(preamble)
-            )
+    preamble, has_marker = extract_preamble_and_content(current_content)
+    if has_marker:
+        logger.info(
+            "Found preamble marker, preserving preamble (%d chars)", len(preamble)
+        )
 
     # Build final content
     if has_marker:

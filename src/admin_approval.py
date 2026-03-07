@@ -169,8 +169,6 @@ def _resolve_approval_context(
         ),
         None,
     )
-    if not application:
-        return None, None
     return role_row, application
 
 
