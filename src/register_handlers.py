@@ -140,7 +140,7 @@ async def register_consent(
     show_on_website = query_data == "register_consent_yes"
     name = str(chat_data.get("register_name", ""))
     email = str(chat_data.get("register_email", ""))
-    telegram_username = update.effective_user.username or ""
+    telegram_username = f"@{update.effective_user.username}" if update.effective_user.username else ""
     user = UserRow(
         Telegram_ID=update.effective_user.id,
         Name=name,

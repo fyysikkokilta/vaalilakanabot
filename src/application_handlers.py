@@ -382,7 +382,7 @@ async def handle_back_button(
 
 
 async def handle_multiple_application_choice(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+    update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> Union[int, str]:
     """Handle user choice when applying to multiple elected roles."""
     query = update.callback_query
@@ -402,10 +402,6 @@ async def handle_multiple_application_choice(
         return ConversationHandler.END
 
     if query.data == "continue_multiple":
-        data_manager = context.bot_data.get("data_manager")
-        if not data_manager:
-            await query.edit_message_text("Error. Please try again.")
-            return ConversationHandler.END
         user_id = update.effective_user.id
         user = data_manager.get_user_by_telegram_id(user_id)
         if not user:
@@ -424,34 +420,10 @@ async def handle_multiple_application_choice(
         role_row = data_manager.get_role_by_id(
             role_id_val if isinstance(role_id_val, str) else ""
         )
-        is_fi = bool(chat_data.get("is_finnish", False))
-        elected_text = (
-            get_translation("admin_approval_note", is_fi)
-            if chat_data.get("is_elected", False)
-            else ""
-        )
-        role_for_name: ElectionStructureRow = (
+        role_for_confirm: ElectionStructureRow = (
             role_row if role_row is not None else cast(ElectionStructureRow, {})
         )
-        text = get_translation(
-            "application_details",
-            is_fi,
-            position=get_role_name(role_for_name, is_fi),
-            name=str(chat_data.get("name", "")),
-            email=str(chat_data.get("email", "")),
-            telegram=str(chat_data.get("telegram", "")),
-            elected_text=elected_text,
-        )
-        text_yes = get_translation("yes", is_fi)
-        text_no = get_translation("no", is_fi)
-        keyboard = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(text_yes, callback_data="yes"),
-                    InlineKeyboardButton(text_no, callback_data="no"),
-                ]
-            ]
-        )
+        text, keyboard = _build_confirm_application_ui(chat_data, role_for_confirm)
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="HTML")
         return CONFIRMING_APPLICATION
 

@@ -270,7 +270,7 @@ async def post_init(
         ],
         SELECTING_ROLE: [
             CallbackQueryHandler(
-                handle_multiple_application_choice,
+                lambda update, ctx: handle_multiple_application_choice(update, ctx, data_manager),
                 pattern="^(continue_multiple|cancel_multiple)$",
             ),
             CallbackQueryHandler(

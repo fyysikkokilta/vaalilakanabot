@@ -127,6 +127,7 @@ async def update_election_sheet(
     # Fetch current post to check for preamble
     current_content = get_current_post_content()
     preamble = ""
+    has_marker = False
 
     if current_content:
         preamble, has_marker = extract_preamble_and_content(current_content)
@@ -141,11 +142,12 @@ async def update_election_sheet(
             preamble = ""
 
     # Build final content
-    if preamble:
-        # Add preamble, marker, and sheet content
-        final_text = f"{preamble}\n\n{SHEET_MARKER}\n\n{sheet_content}"
+    if has_marker:
+        if preamble:
+            final_text = f"{preamble}\n\n{SHEET_MARKER}\n\n{sheet_content}"
+        else:
+            final_text = f"{SHEET_MARKER}\n\n{sheet_content}"
     else:
-        # No preamble, just use sheet content
         final_text = sheet_content
 
     headers = {

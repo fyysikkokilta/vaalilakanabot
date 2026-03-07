@@ -327,9 +327,11 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
         try:
             sheet_applications = self.get_all_applications_from_sheets()
 
-            # Add queue applications to sheet applications
+            # Add queue applications to sheet applications (copy sheet apps to avoid mutating the cache)
             queue_applications = list(self.application_queue)
-            all_applications = sheet_applications + queue_applications
+            all_applications: List[ApplicationRow] = [
+                cast(ApplicationRow, dict(app)) for app in sheet_applications
+            ] + queue_applications
 
             # Apply status updates to all applications
             status_updates = self.status_update_queue.copy()

@@ -149,6 +149,10 @@ class DataManager:
         """Get all applications (sheet data plus queued and status updates)."""
         return self.sheets_manager.get_all_applications()
 
+    def _build_users_by_id(self) -> Dict[int, UserRow]:
+        """Build a lookup dict of users by Telegram_ID for efficient repeated lookups."""
+        return {u["Telegram_ID"]: u for u in self.get_all_users()}
+
     def get_applicant_display(self, app: ApplicationRow) -> Optional[UserRow]:
         """Resolve Name, Email, Telegram for an application from Users sheet."""
         return self.get_user_by_telegram_id(app.get("Telegram_ID"))
@@ -196,17 +200,15 @@ class DataManager:
         )
 
     def _get_applications_for_group(
-        self, role_id: str, group_id: str
+        self, role_id: str, group_id: str, role_apps: Optional[List[ApplicationRow]] = None
     ) -> List[ApplicationRow]:
         """Return all applications for this role with the given Group_ID."""
         normalized_group_id = group_id.strip()
         if not normalized_group_id:
             return []
-        return [
-            app
-            for app in self._get_applications_for_role(role_id)
-            if get_group_id(app) == normalized_group_id
-        ]
+        if role_apps is None:
+            role_apps = self._get_applications_for_role(role_id)
+        return [app for app in role_apps if get_group_id(app) == normalized_group_id]
 
     def _get_applicant_by_role_and_name(
         self, role: ElectionStructureRow, applicant_name: str
@@ -231,7 +233,7 @@ class DataManager:
             if not group_id:
                 continue
 
-            group_apps = self._get_applications_for_group(role_id, group_id)
+            group_apps = self._get_applications_for_group(role_id, group_id, role_apps=applications)
             group_names = frozenset(
                 get_user_name(self.get_applicant_display(a), "") for a in group_apps
             )
@@ -505,7 +507,10 @@ class DataManager:
         return self.sheets_manager.get_all_channels()  # type: ignore[no-any-return]
 
     def _applicants_for_role_enriched(
-        self, role: ElectionStructureRow, all_applications: List[ApplicationRow]
+        self,
+        role: ElectionStructureRow,
+        all_applications: List[ApplicationRow],
+        users_by_id: Optional[Dict[int, UserRow]] = None,
     ) -> List[ApplicationWithDisplay]:
         """Return enriched and group-merged applicants for one role."""
         raw = [
@@ -516,7 +521,11 @@ class DataManager:
         ]
         enriched: List[ApplicationWithDisplay] = []
         for app in raw:
-            user = self.get_user_by_telegram_id(app.get("Telegram_ID"))
+            user = (
+                users_by_id.get(app.get("Telegram_ID"))
+                if users_by_id is not None
+                else self.get_user_by_telegram_id(app.get("Telegram_ID"))
+            )
             if not user:
                 logger.warning(
                     "Skipping application with missing user: Role_ID=%s, Telegram_ID=%s",
@@ -562,6 +571,7 @@ class DataManager:
         """Build full election dataset (divisions with roles and enriched applicants)."""
         roles = self.get_all_roles()
         all_applications = self.get_all_applications()
+        users_by_id = self._build_users_by_id()
         divisions_dict: Dict[str, DivisionData] = {}
         for role in roles:
             div_fi = role.get("Division_FI")
@@ -570,7 +580,7 @@ class DataManager:
                 divisions_dict[div_fi] = DivisionData(
                     Division_FI=div_fi, Division_EN=div_en, Roles=[]
                 )
-            applicants = self._applicants_for_role_enriched(role, all_applications)
+            applicants = self._applicants_for_role_enriched(role, all_applications, users_by_id)
             divisions_dict[div_fi]["Roles"].append(
                 RoleData(
                     ID=role.get("ID", ""),

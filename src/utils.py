@@ -111,16 +111,11 @@ def generate_keyboard(
 ) -> InlineKeyboardMarkup:
     """Generate an inline keyboard with the given options."""
     keyboard: List[List[InlineKeyboardButton]] = []
-    for option in options:
-        if callback_data:
-            keyboard.append(
-                [
-                    InlineKeyboardButton(
-                        option, callback_data=callback_data[options.index(option)]
-                    )
-                ]
-            )
-        else:
+    if callback_data:
+        for option, cb in zip(options, callback_data):
+            keyboard.append([InlineKeyboardButton(option, callback_data=cb)])
+    else:
+        for option in options:
             keyboard.append([InlineKeyboardButton(option, callback_data=option)])
 
     if back:
@@ -237,6 +232,7 @@ async def send_sticker(update: Update, sticker_name: str) -> None:
 def map_application_status(status: ApplicationStatus, is_finnish: bool = True) -> str:
     """Map application status to localized string."""
     status_map = {
+        "": ("Odottaa", "Pending"),
         "APPROVED": ("Hyväksytty", "Approved"),
         "DENIED": ("Hylätty", "Rejected"),
         "REMOVED": ("Poistettu", "Removed"),
