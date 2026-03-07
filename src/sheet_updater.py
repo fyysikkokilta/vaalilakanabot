@@ -25,10 +25,10 @@ def get_current_post_content() -> Optional[str]:
         )
         response.raise_for_status()
         data = response.json()
-        return data.get("raw", "")
+        return str(data.get("raw", ""))
     except Exception as e:
         logger.error("Error fetching current post content: %s", e)
-        return None
+        return ""
 
 
 def extract_preamble_and_content(full_text: str) -> Tuple[str, bool]:

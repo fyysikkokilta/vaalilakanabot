@@ -357,9 +357,11 @@ class DataManager:
         role_apps = self._get_applications_for_role(role.get("ID", ""))
         apps: List[ApplicationRow] = []
         missing: List[str] = []
-        seen_ids: set = set()
+        seen_ids: set[int] = set()
         for name in names:
-            resolved = self._resolve_applications_by_name(role, name, users_by_id, role_apps)
+            resolved = self._resolve_applications_by_name(
+                role, name, users_by_id, role_apps
+            )
             if resolved:
                 for app in resolved:
                     tid = app.get("Telegram_ID")
