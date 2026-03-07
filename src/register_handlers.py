@@ -140,7 +140,9 @@ async def register_consent(
     show_on_website = query_data == "register_consent_yes"
     name = str(chat_data.get("register_name", ""))
     email = str(chat_data.get("register_email", ""))
-    telegram_username = f"@{update.effective_user.username}" if update.effective_user.username else ""
+    telegram_username = (
+        f"@{update.effective_user.username}" if update.effective_user.username else ""
+    )
     user = UserRow(
         Telegram_ID=update.effective_user.id,
         Name=name,
@@ -150,8 +152,6 @@ async def register_consent(
         Updated_At=datetime.now().isoformat(),
     )
     data_manager.upsert_user(user)
-    data_manager.flush_user_queue()
-    data_manager.invalidate_caches()
     chat_data.pop("register_name", None)
     chat_data.pop("register_email", None)
     is_finnish = bool(chat_data.get("register_fi", True))
