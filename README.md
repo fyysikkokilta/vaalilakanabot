@@ -41,6 +41,7 @@ This project uses GitHub Actions for continuous integration and deployment:
   - Create a Google Sheets document and share it with the service account email (Editor permissions)
   - Set `GOOGLE_SHEET_URL` in `bot.env` to the full URL of your Google Sheet
 - Create `bot.env` according to the example file `bot.env.example`.
+- **Set `ELECTION_YEAR`** in `bot.env` to the current election year (e.g. `ELECTION_YEAR=2025`). This is required: the bot uses it to generate Discourse areas and to derive all Fiirumi URLs (introductions, questions, election sheet post).
 - Initialize election structure in Google Sheets
 - Run the bot: `vaalilakanabot` (or `python vaalilakanabot.py`)
 - Add the bot to relevant discussion groups.
@@ -50,8 +51,7 @@ This project uses GitHub Actions for continuous integration and deployment:
 - Create a Telegram bot and save the bot token.
 - Create Discourse api keys to be used by the bot.
 - Create an admin Telegram group and get the id of the group using, for example, `@RawDataBot`.
-- **Optional**: Set `ELECTION_YEAR` in `bot.env` to automatically generate Discourse areas (see Automatic Area Generation below).
-- **If not using automatic generation**: Manually create Discourse areas for the introductions and questions.
+- **Set `ELECTION_YEAR`** in `bot.env` to the current election year (e.g. `ELECTION_YEAR=2025`). This is required for Discourse area generation and for all Fiirumi URLs.
 - Create the post for the Election sheet. The post should contain a separate empty message that will be edited by the bot.
 - Create Google service account credentials with access to Google Sheets API for the bot to use and export the credentials as `google_credentials.json`.
 - Create `bot.env` according to the example file `bot.env.example`.
@@ -130,11 +130,11 @@ docker-compose -f docker-compose.prod.yml up
 
 ## Automatic Fiirumi Area Generation
 
-The bot can automatically create the necessary Discourse categories for elections when started. This eliminates the need to manually create categories each year.
+The bot requires `ELECTION_YEAR` to be set. It uses this to create the necessary Discourse categories when started and to derive all Fiirumi URLs. This eliminates the need to manually create categories or configure topic URLs each year.
 
 ### How It Works
 
-Set the `ELECTION_YEAR` environment variable in `bot.env` to the target election year:
+Set the `ELECTION_YEAR` environment variable in `bot.env` to the current election year (required):
 
 ```bash
 ELECTION_YEAR=2025
@@ -159,7 +159,7 @@ For `ELECTION_YEAR=2025`:
 
 ### Configuration
 
-When `ELECTION_YEAR` is set to the current year, all Fiirumi URLs are derived automatically — introductions, questions, and the election sheet post URL. No additional URL configuration is required.
+`ELECTION_YEAR` is required. Set it to the current election year; the bot then derives all Fiirumi URLs automatically (introductions, questions, election sheet post). No additional URL configuration is needed.
 
 ### Admin Approval
 

@@ -18,10 +18,10 @@ GOOGLE_CREDENTIALS_FILE: str = "google_credentials.json"
 API_KEY: str = os.environ["API_KEY"]
 API_USERNAME: str = os.environ["API_USERNAME"]
 
-# Election year for automatic area generation (optional)
-# When set and matching the current year, the bot auto-generates Discourse categories,
-# creates the election sheet topic, and derives all Fiirumi URLs automatically.
-ELECTION_YEAR: Optional[str] = os.getenv("ELECTION_YEAR") or None
+# Election year for automatic area generation (required)
+# Set to the current election year. The bot auto-generates Discourse categories,
+# creates the election sheet topic, and derives all Fiirumi URLs from this.
+ELECTION_YEAR: str = os.getenv("ELECTION_YEAR")
 
 # Set by fiirumi_area_generator after finding/creating the election sheet topic.
 # A list is used so the setter can mutate it without a global statement.

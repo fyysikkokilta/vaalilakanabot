@@ -134,13 +134,13 @@ Environment variables are loaded from `bot.env` (see `bot.env.example`):
 - **GOOGLE_SHEET_URL** - Full URL of Google Sheets document
 - **BASE_URL** - Discourse server base URL
 - **API_KEY** / **API_USERNAME** - Discourse API credentials
-- **ELECTION_YEAR** (optional) - Target year for automatic Discourse area generation; all Fiirumi URLs (introductions, questions, election sheet post) are derived automatically when this matches the current year
+- **ELECTION_YEAR** (required) - Target election year (e.g. 2025). Used for automatic Discourse area generation and to derive all Fiirumi URLs (introductions, questions, election sheet post). Set to the current election year.
 
 Google credentials must be in `google_credentials.json` at project root (gitignored).
 
 ## Automatic Fiirumi Area Generation
 
-The bot can automatically create Discourse categories for elections when `ELECTION_YEAR` is set and matches the current year.
+The bot requires `ELECTION_YEAR` to be set (to the current election year). It uses this to create Discourse categories and to derive all Fiirumi URLs.
 
 **Module**: `src/fiirumi_area_generator.py`
 
