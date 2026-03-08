@@ -6,18 +6,27 @@ from typing import Any, Dict, Optional, cast
 
 import requests
 
-from .config import BASE_URL, API_KEY, API_USERNAME
+from .config import BASE_URL, API_KEY, API_USERNAME, set_generated_vaalilakana_post_url
 
 logger = logging.getLogger("vaalilakanabot")
 
 
-def get_discourse_headers() -> Dict[str, str]:
-    """Get headers for Discourse API requests."""
-    return {
+def get_discourse_headers(
+    content_type: Optional[str] = "application/json",
+) -> Dict[str, str]:
+    """Get headers for Discourse API requests.
+
+    Args:
+        content_type: Value for the Content-Type header, or None to omit it
+                      (e.g. when posting form data so requests sets the boundary automatically).
+    """
+    headers: Dict[str, str] = {
         "Api-Key": API_KEY,
         "Api-Username": API_USERNAME,
-        "Content-Type": "application/json",
     }
+    if content_type is not None:
+        headers["Content-Type"] = content_type
+    return headers
 
 
 def create_category(
@@ -68,10 +77,10 @@ def create_category(
         return cast(Optional[Dict[str, Any]], result.get("category"))
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 422:
-            # Category might already exist
-            logger.warning("Category '%s' might already exist: %s", name, e)
-        else:
-            logger.error("Failed to create category '%s': %s", name, e)
+            # Category already exists; return a stub so callers treat this as success
+            logger.info("Category '%s' already exists (422)", name)
+            return {"name": name, "slug": slug or name}
+        logger.error("Failed to create category '%s': %s", name, e)
         return None
     except Exception as e:
         logger.error("Error creating category '%s': %s", name, e)
@@ -103,11 +112,171 @@ def find_category_by_slug(slug: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _first_post_url_from_topic_data(t_data: Dict[str, Any]) -> Optional[str]:
+    """Extract the first post URL from a topic JSON response."""
+    post_stream = t_data.get("post_stream", {}) or {}
+    posts = post_stream.get("posts", [])
+    if posts:
+        post_id = posts[0].get("id")
+        if post_id is not None:
+            return f"{BASE_URL}/posts/{post_id}.json"
+    return None
+
+
+def _topic_id_to_post_url(topic_id: int) -> Optional[str]:
+    """Fetch a topic by ID and return its first post URL."""
+    try:
+        tr = requests.get(
+            f"{BASE_URL}/t/{topic_id}.json",
+            headers=get_discourse_headers(),
+            timeout=30,
+        )
+        tr.raise_for_status()
+        url = _first_post_url_from_topic_data(tr.json())
+        if url:
+            logger.info("Found election sheet topic (id=%d): %s", topic_id, url)
+        return url
+    except Exception as e:
+        logger.warning("Failed to fetch topic id=%d: %s", topic_id, e)
+        return None
+
+
+def _find_election_sheet_post_url_by_search(year: int, parent_slug: str = "") -> Optional[str]:
+    """Find the election sheet topic for the given year; return its first post URL.
+
+    Strategy:
+    1. Category topic list (parent or vaalilakana sub) — reliable, no search index lag.
+    2. Direct slug lookup via /t/vaalilakana-{year}.json.
+    3. Discourse search API as last resort.
+    """
+    title = f"Vaalilakana {year}"
+
+    # 1. Category topic-list scan — works even if search index lags
+    for cat_slug in filter(None, [parent_slug]):
+        list_url = f"{BASE_URL}/c/{cat_slug}/l/latest.json"
+        logger.info("Scanning category topic list: %s", list_url)
+        try:
+            r = requests.get(list_url, headers=get_discourse_headers(), timeout=30)
+            r.raise_for_status()
+            topics = r.json().get("topic_list", {}).get("topics", [])
+            logger.info(
+                "Category '%s' has %d topic(s): %s",
+                cat_slug,
+                len(topics),
+                [t.get("title") for t in topics],
+            )
+            for topic in topics:
+                if topic.get("title") == title:
+                    topic_id = topic.get("id")
+                    if topic_id:
+                        return _topic_id_to_post_url(int(topic_id))
+        except Exception as e:
+            logger.warning("Category list scan failed for '%s': %s", cat_slug, e)
+
+    # 2. Direct slug lookup — Discourse auto-generates slug as lowercase-hyphenated title
+    slug_url = f"{BASE_URL}/t/vaalilakana-{year}.json"
+    logger.info("Trying slug lookup: %s", slug_url)
+    try:
+        response = requests.get(slug_url, headers=get_discourse_headers(), timeout=30)
+        response.raise_for_status()
+        t_data = response.json()
+        if t_data.get("title") == title:
+            url = _first_post_url_from_topic_data(t_data)
+            if url:
+                return url
+        else:
+            logger.warning(
+                "Slug lookup returned topic with unexpected title %r (expected %r)",
+                t_data.get("title"), title,
+            )
+    except Exception as e:
+        logger.warning("Slug-based lookup for election sheet topic failed: %s", e)
+
+    # 3. Search API
+    logger.info("Trying search API for title: %r", title)
+    try:
+        response = requests.get(
+            f"{BASE_URL}/search.json",
+            headers=get_discourse_headers(),
+            params={"q": title},
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+        logger.info(
+            "Search returned %d topic(s), %d post(s)",
+            len(data.get("topics", [])),
+            len(data.get("posts", [])),
+        )
+        for topic in data.get("topics", []):
+            if topic.get("title") == title:
+                topic_id = topic.get("id")
+                if topic_id:
+                    return _topic_id_to_post_url(int(topic_id))
+    except Exception as e:
+        logger.warning("Search API fallback for election sheet topic failed: %s", e)
+
+    return None
+
+
+def _create_election_sheet_topic(year: int, category_id: int, parent_slug: str = "") -> Optional[str]:
+    """Create the election sheet topic in the given category; return its first post URL.
+
+    If the topic already exists (422), falls back to searching for it.
+    """
+    url = f"{BASE_URL}/posts.json"
+    title = f"Vaalilakana {year}"
+    # Preamble text satisfies Discourse's minimum-body quality check.
+    # The sheet updater preserves everything above the marker when updating,
+    # so the preamble will remain even after the first automated update.
+    raw = (
+        f"# Vaalilakana {year}\n\n"
+        f"Tämä postaus sisältää automaattisesti päivitetyn vaalilakanan. "
+        f"This post contains the automatically updated election sheet.\n\n"
+        f"---SHEET STARTS HERE---\n\n"
+    )
+    # Discourse often expects form data for POST /posts.json (some instances reject JSON);
+    # omit Content-Type so requests sets the correct multipart boundary automatically.
+    payload: Dict[str, Any] = {
+        "title": title,
+        "raw": raw,
+        "category": category_id,
+    }
+    try:
+        response = requests.post(
+            url,
+            headers=get_discourse_headers(content_type=None),
+            data=payload,
+            timeout=30,
+        )
+        response.raise_for_status()
+        result = response.json()
+        post_id = result.get("id")
+        if post_id is not None:
+            logger.info(
+                "Created election sheet topic '%s' with post id %s", title, post_id
+            )
+            return f"{BASE_URL}/posts/{post_id}.json"
+        return None
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 422:
+            body = e.response.text[:500]
+            logger.info(
+                "Election sheet topic '%s' already exists (422); body: %s", title, body
+            )
+            return _find_election_sheet_post_url_by_search(year, parent_slug)
+        logger.error("Failed to create election sheet topic: %s — %s", e, e.response.text[:500])
+        return None
+    except Exception as e:
+        logger.error("Error creating election sheet topic: %s", e)
+        return None
+
+
 def generate_election_areas(year: int) -> bool:
     """Generate Discourse categories for election year.
 
     Creates:
-    - Parent category: vaalipeli-{year}
+    - Parent category: vaalipeli-{year} (election sheet topic posted here)
     - Subcategory: esittelyt (introductions)
     - Subcategory: kysymykset (questions)
 
@@ -160,12 +329,15 @@ def generate_election_areas(year: int) -> bool:
     all_success = True
 
     for subcat in subcategories:
-        # Check if subcategory exists
         full_slug = f"{parent_slug}/{subcat['slug']}"
-        existing = find_category_by_slug(full_slug)
+        # Try slug-based lookup first, then numeric-parent-ID-based lookup as fallback
+        # (some Discourse instances don't support /c/{parent_slug}/{child_slug}/show.json)
+        existing = (
+            find_category_by_slug(full_slug)
+            or find_category_by_slug(f"{parent_id}/{subcat['slug']}")
+        )
 
         if not existing:
-            # Create subcategory
             result = create_category(
                 name=subcat["name"],
                 slug=subcat["slug"],
@@ -173,21 +345,34 @@ def generate_election_areas(year: int) -> bool:
                 text_color="FFFFFF",
                 parent_category_id=parent_id,
             )
-
             if not result:
                 logger.error("Failed to create subcategory '%s'", subcat["name"])
                 all_success = False
         else:
-            logger.info("Subcategory '%s' already exists", full_slug)
+            logger.info("Subcategory '%s' already exists (id=%s)", full_slug, existing.get("id"))
+
+    # Log area URLs regardless of subcategory success
+    logger.info("Election area URLs:")
+    logger.info("  Main: %s/c/%s", BASE_URL, parent_slug)
+    logger.info("  Introductions: %s/c/%s/esittelyt", BASE_URL, parent_slug)
+    logger.info("  Questions: %s/c/%s/kysymykset", BASE_URL, parent_slug)
 
     if all_success:
         logger.info("Successfully generated all election areas for year %d", year)
 
-        # Log the URLs for convenience
-        logger.info("Election area URLs:")
-        logger.info("  Main: %s/c/%s", BASE_URL, parent_slug)
-        logger.info("  Introductions: %s/c/%s/esittelyt", BASE_URL, parent_slug)
-        logger.info("  Questions: %s/c/%s/kysymykset", BASE_URL, parent_slug)
+    # Find or create the election sheet topic in the parent category
+    post_url = _find_election_sheet_post_url_by_search(year, parent_slug)
+    if not post_url:
+        post_url = _create_election_sheet_topic(year, parent_id, parent_slug)
+    if post_url:
+        set_generated_vaalilakana_post_url(post_url)
+        logger.info("Election sheet post URL: %s", post_url)
+    else:
+        logger.warning(
+            "Could not create or find election sheet topic for year %d; "
+            "set VAALILAKANA_POST_URL in bot.env to update the sheet on Discourse",
+            year,
+        )
 
     return all_success
 

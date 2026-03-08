@@ -43,7 +43,7 @@ pylint src/*.py
 
 1. **Election Structure** - Defines available roles (divisions, positions, types, deadlines)
 2. **Applications** - User applications with status tracking (linked to Users by Telegram_ID; optional Group_ID for group applications)
-3. **Users** - User registration (name, email, consent). Required before applying; `/register` and `/rekisteröidy` upsert here.
+3. **Users** - User registration (name, email, consent). Required before applying; `/register` and `/rekisteroidy` upsert here.
 4. **Channels** - Registered Telegram chats for announcements
 
 This design allows admins to manually edit data in Google Sheets and have changes sync automatically with the bot.
@@ -109,7 +109,7 @@ Non-elected positions (NON_ELECTED type) are automatically approved.
 
 ### Conversation Handler States
 
-**Application flow** (`/hae`, `/apply`): Requires the user to be registered (Users sheet). If not, the bot prompts to use `/register` or `/rekisteröidy`. States:
+**Application flow** (`/hae`, `/apply`): Requires the user to be registered (Users sheet). If not, the bot prompts to use `/register` or `/rekisteroidy`. States:
 
 - `SELECTING_DIVISION` - Choose election division
 - `SELECTING_ROLE` - Choose position within division
@@ -117,7 +117,7 @@ Non-elected positions (NON_ELECTED type) are automatically approved.
 
 Both Finnish (`/hae`) and English (`/apply`) share the same state machine.
 
-**Registration flow** (`/rekisteröidy`, `/register`): **src/register_handlers.py**
+**Registration flow** (`/rekisteroidy`, `/register`): **src/register_handlers.py**
 
 - `REGISTER_NAME` - Enter full name
 - `REGISTER_EMAIL` - Enter email
@@ -134,10 +134,7 @@ Environment variables are loaded from `bot.env` (see `bot.env.example`):
 - **GOOGLE_SHEET_URL** - Full URL of Google Sheets document
 - **BASE_URL** - Discourse server base URL
 - **API_KEY** / **API_USERNAME** - Discourse API credentials
-- **TOPIC_LIST_URL** - Discourse category JSON for introductions
-- **QUESTION_LIST_URL** - Discourse category JSON for questions
-- **VAALILAKANA_POST_URL** - Discourse post to update with election sheet
-- **ELECTION_YEAR** (optional) - Target year for automatic Discourse area generation
+- **ELECTION_YEAR** (optional) - Target year for automatic Discourse area generation; all Fiirumi URLs (introductions, questions, election sheet post) are derived automatically when this matches the current year
 
 Google credentials must be in `google_credentials.json` at project root (gitignored).
 
@@ -149,9 +146,10 @@ The bot can automatically create Discourse categories for elections when `ELECTI
 
 **Generated structure**:
 
-- Parent category: `vaalipeli-{year}` (e.g., "Vaalipeli 2025")
+- Parent category: `vaalipeli-{year}` (e.g., "Vaalipeli 2025") — election sheet topic is posted here
 - Subcategory: `esittelyt` (Introductions)
 - Subcategory: `kysymykset` (Questions)
+- Election sheet topic: a topic titled "Vaalilakana {year}" in the parent category (first post URL is used as VAALILAKANA_POST_URL when not set)
 
 **Behavior**:
 
@@ -203,10 +201,10 @@ Display name/email/telegram are resolved from the Users sheet via `Telegram_ID`.
 
 **Purpose**:
 
-- Users register via `/register` (English) or `/rekisteröidy` (Finnish) before applying
+- Users register via `/register` (English) or `/rekisteroidy` (Finnish) before applying
 - Applying uses this data (no name/email asked in apply flow); `/hakemukset` and `/applications` require registration
 - Single consent field controls export (e.g. `export_officials_website`) and display on the website's official page
-- Running `/register` or `/rekisteröidy` again upserts the user (update flow)
+- Running `/register` or `/rekisteroidy` again upserts the user (update flow)
 
 ## CI/CD
 
@@ -223,7 +221,7 @@ GitHub Actions workflow (`.github/workflows/ci.yml`):
 
 Commands come in Finnish and English pairs:
 
-- `/rekisteröidy` and `/register` - Register or update user info (required before applying)
+- `/rekisteroidy` and `/register` - Register or update user info (required before applying)
 - `/hae` and `/apply` - Start application (checks registration first)
 - `/lakana` and `/sheet` - Show election sheet
 - `/hakemukset` and `/applications` - Show user's applications (requires registration)
@@ -262,7 +260,7 @@ Admins can add roles directly in Google Sheets without bot commands:
 
 ## User Registration
 
-- **Commands**: `/register` (English) and `/rekisteröidy` (Finnish), private chat only. Implemented in **src/register_handlers.py**.
+- **Commands**: `/register` (English) and `/rekisteroidy` (Finnish), private chat only. Implemented in **src/register_handlers.py**.
 - **Flow**: User is asked for full name, email, and consent (show on website's official page Yes/No). Data is upserted into the Users sheet. Running the command again shows an update intro and the same steps, then overwrites the user row.
 - **Gating**: Applying (`/hae`, `/apply`) and viewing applications (`/hakemukset`, `/applications`) require the user to exist in the Users sheet; otherwise the bot replies with a prompt to register first.
 - **Application data**: Applications store only `Telegram_ID` (and application fields). Name, email, and Telegram handle are resolved from the Users sheet via `DataManager.get_applicant_display()` and by enriching applicant lists in `_applicants_for_role_enriched()` (called via the `vaalilakana_full` property in `sheets_data_manager.py`). Admin approval and admin commands (remove, elected, fiirumi, combine) resolve names from Users by `Telegram_ID`.

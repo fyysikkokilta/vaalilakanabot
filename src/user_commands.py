@@ -43,7 +43,7 @@ async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
 • /yauh - Send yauh sticker
 
 <b>Registration and applying (private message):</b>
-1) <b>Register first:</b> Use /register (or /rekisteröidy for Finnish). Enter your name, email, and consent. You can run it again to update your info.
+1) <b>Register first:</b> Use /register (or /rekisteroidy for Finnish). Enter your name, email, and consent. You can run it again to update your info.
 2) Applications are linked to your Telegram user—only apply from your own device.
 3) Official roles are in divisions. Find them on the physical sheet in the guild room or on Fiirumi in the "vaalilakana" section.
 4) Use /apply and follow the bot. You can check your details before submitting.
@@ -77,7 +77,7 @@ async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
 • /stop - Poista kanava tiedotuskanavista
 • /lakana - Näytä nykyinen vaalilakana
 • /hakemukset - Näytä omat hakemuksesi (yksityisviesti)
-• /rekisteröidy - Rekisteröidy tai päivitä tietosi (yksityisviesti)
+• /rekisteroidy - Rekisteröidy tai päivitä tietosi (yksityisviesti)
 • /hae - Hae virkaan (yksityisviesti)
 
 <b>Hauskat komennot:</b>
@@ -89,7 +89,7 @@ async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
 • /yauh - Lähetä yauh-tarra
 
 <b>Rekisteröityminen ja hakeminen (yksityisviesti):</b>
-1) <b>Rekisteröidy ensin:</b> Käytä /rekisteröidy (tai /register englanniksi). Syötä nimesi, sähköposti ja suostumus. Voit ajaa komennon uudelleen päivittääksesi tiedot.
+1) <b>Rekisteröidy ensin:</b> Käytä /rekisteroidy (tai /register englanniksi). Syötä nimesi, sähköposti ja suostumus. Voit ajaa komennon uudelleen päivittääksesi tiedot.
 2) Hakemukset yhdistetään telegramkäyttäjääsi—hakekaa vain omalla laitteella.
 3) Toimariroolit on jaettu jaoksittain. Etsi rooli kiltiksen fyysisestä vaalilakanasta tai Fiirumilta vaalilakanaosiosta.
 4) Aloita hakeminen komennolla /hae ja seuraa botin ohjeita. Voit tarkistaa tiedot ennen lähettämistä.

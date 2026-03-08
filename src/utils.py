@@ -399,7 +399,7 @@ def get_translation(key: str, is_finnish: bool = True, **kwargs: Any) -> str:
         ),
         # Registration
         "please_register_first": (
-            "Rekisteröidy ensin komennolla /rekisteröidy ennen hakemista.",
+            "Rekisteröidy ensin komennolla /rekisteroidy ennen hakemista.",
             "Please register first with /register before applying.",
         ),
         "register_ask_name": (

@@ -1,12 +1,13 @@
 """Configuration settings for the Vaalilakanabot."""
 
 import os
-from typing import Optional
+from datetime import datetime
+from typing import List, Optional
 
 # Bot configuration
 TOKEN: str = os.environ["VAALILAKANABOT_TOKEN"]
 ADMIN_CHAT_ID: int = int(os.environ["ADMIN_CHAT_ID"])
-BASE_URL: str = os.environ["BASE_URL"]
+BASE_URL: str = os.environ["BASE_URL"].rstrip("/")
 
 # Google Sheets configuration
 GOOGLE_SHEET_URL: str = os.environ["GOOGLE_SHEET_URL"]
@@ -14,15 +15,52 @@ GOOGLE_SHEET_URL: str = os.environ["GOOGLE_SHEET_URL"]
 GOOGLE_CREDENTIALS_FILE: str = "google_credentials.json"
 
 # Discourse / Fiirumi configuration
-TOPIC_LIST_URL: str = os.environ["TOPIC_LIST_URL"]
-QUESTION_LIST_URL: str = os.environ["QUESTION_LIST_URL"]
 API_KEY: str = os.environ["API_KEY"]
 API_USERNAME: str = os.environ["API_USERNAME"]
-VAALILAKANA_POST_URL: str = os.environ["VAALILAKANA_POST_URL"]
 
 # Election year for automatic area generation (optional)
-# If set and matches current year, bot will auto-generate Discourse categories
+# When set and matching the current year, the bot auto-generates Discourse categories,
+# creates the election sheet topic, and derives all Fiirumi URLs automatically.
 ELECTION_YEAR: Optional[str] = os.getenv("ELECTION_YEAR") or None
+
+# Set by fiirumi_area_generator after finding/creating the election sheet topic.
+# A list is used so the setter can mutate it without a global statement.
+_generated_vaalilakana_post_url: List[Optional[str]] = [None]
+
+
+def get_topic_list_url() -> Optional[str]:
+    """Return the introductions category JSON URL, derived from ELECTION_YEAR."""
+    if ELECTION_YEAR:
+        try:
+            year = int(ELECTION_YEAR)
+            if datetime.now().year == year:
+                return f"{BASE_URL}/c/vaalipeli-{year}/esittelyt/l/latest.json"
+        except ValueError:
+            pass
+    return None
+
+
+def get_question_list_url() -> Optional[str]:
+    """Return the questions category JSON URL, derived from ELECTION_YEAR."""
+    if ELECTION_YEAR:
+        try:
+            year = int(ELECTION_YEAR)
+            if datetime.now().year == year:
+                return f"{BASE_URL}/c/vaalipeli-{year}/kysymykset/l/latest.json"
+        except ValueError:
+            pass
+    return None
+
+
+def get_vaalilakana_post_url() -> Optional[str]:
+    """Return the election sheet post URL set by the area generator, or None if not yet generated."""
+    return _generated_vaalilakana_post_url[0]
+
+
+def set_generated_vaalilakana_post_url(url: str) -> None:
+    """Set the election sheet post URL. Called from fiirumi_area_generator."""
+    _generated_vaalilakana_post_url[0] = url
+
 
 # Conversation states
 SELECTING_DIVISION: str = "SELECTING_DIVISION"

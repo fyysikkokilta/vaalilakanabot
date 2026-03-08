@@ -4,7 +4,7 @@ A Telegram bot that maintains a listing of candidates during elections and annou
 
 ## Features
 
-- **Registration**: Users register once with name, email, and consent (show on website's official page). Use `/register` (English) or `/rekisteröidy` (Finnish) in a private chat. Registration can be updated by running the command again.
+- **Registration**: Users register once with name, email, and consent (show on website's official page). Use `/register` (English) or `/rekisteroidy` (Finnish) in a private chat. Registration can be updated by running the command again.
 - Guild members can apply for both elected and non-elected positions. **Applying requires prior registration**; the bot will prompt unregistered users to register first.
 - **Admin approval**: Applications for elected positions (board and elected officials) require admin approval before being added to the election sheet.
 - **Group applications**: Applicants can apply together for the same role. They tell the admins; an admin uses `/combine <position>, <name1>, <name2>, ...` to link them. Group members then appear on one line in the election sheet. When marking a group as elected, the admin must list all members: `/elected <position>, <name1>, <name2>, ...`.
@@ -90,7 +90,7 @@ docker-compose -f docker-compose.prod.yml up
 - `/hakemukset` - Show your applications (Finnish, private chat)
 - `/applications` - Show your applications (English, private chat)
 - **Registration (private chat):** You must register before applying.
-  - `/rekisteröidy` - Register or update your info (Finnish)
+  - `/rekisteroidy` - Register or update your info (Finnish)
   - `/register` - Register or update your info (English)
 - **Applying (private chat):**
   - `/hae` - Start application form (Finnish)
@@ -141,6 +141,7 @@ When the bot starts and the current year matches `ELECTION_YEAR`, it will automa
 1. **Parent category**: `vaalipeli-{year}` (e.g., "Vaalipeli 2025")
 2. **Subcategory**: `esittelyt` (Introductions) - for candidate introductions
 3. **Subcategory**: `kysymykset` (Questions) - for questions to candidates
+4. **Election sheet topic**: A topic titled "Vaalilakana {year}" in the parent category. The bot finds or creates this topic and updates it with the election sheet every 60 seconds.
 
 The bot will check if categories already exist before creating them, so it's safe to run multiple times.
 
@@ -148,20 +149,13 @@ The bot will check if categories already exist before creating them, so it's saf
 
 For `ELECTION_YEAR=2025`:
 
-- Main: `https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025`
+- Main (+ election sheet topic): `https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025`
 - Introductions: `https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025/esittelyt`
 - Questions: `https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025/kysymykset`
 
 ### Configuration
 
-After areas are generated, update your `bot.env` with the correct URLs:
-
-```bash
-TOPIC_LIST_URL=https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025/esittelyt/l/latest.json
-QUESTION_LIST_URL=https://fiirumi.fyysikkokilta.fi/c/vaalipeli-2025/kysymykset/l/latest.json
-```
-
-**Note**: Leave `ELECTION_YEAR` empty or unset if you want to manually create categories or prevent premature generation.
+When `ELECTION_YEAR` is set to the current year, all Fiirumi URLs are derived automatically — introductions, questions, and the election sheet post URL. No additional URL configuration is required.
 
 ### Admin Approval
 
@@ -180,9 +174,9 @@ Applications for elected positions require admin approval:
 
 ### Registration
 
-1. In a **private chat** with the bot, use `/register` (English) or `/rekisteröidy` (Finnish).
+1. In a **private chat** with the bot, use `/register` (English) or `/rekisteroidy` (Finnish).
 2. Enter your full name, email, and whether your name may be shown on the guild website.
-3. After registering, you can apply with `/apply` or `/hae`. Running `/register` or `/rekisteröidy` again updates your info.
+3. After registering, you can apply with `/apply` or `/hae`. Running `/register` or `/rekisteroidy` again updates your info.
 
 ### Group Applications
 
@@ -251,7 +245,7 @@ The bot creates and manages 4 worksheets in your Google Sheets document:
 | E      | Show_On_Website_Consent | TRUE/FALSE – consent to show person on website's official page |
 | F      | Updated_At              | Last update timestamp                                          |
 
-Users register via `/register` or `/rekisteröidy`; applying uses this data. The single consent field controls whether the person is shown on the website's official page (used by `/export_officials_website`).
+Users register via `/register` or `/rekisteroidy`; applying uses this data. The single consent field controls whether the person is shown on the website's official page (used by `/export_officials_website`).
 
 #### Sheet 4: "Channels"
 
@@ -306,6 +300,7 @@ Important dates:
 
 **Notes:**
 
+- The election sheet post URL is set automatically when ELECTION_YEAR is configured.
 - The preamble can contain any Markdown formatting
 - The marker must be on its own line with no extra spaces
 - If no marker is present, the entire post will be replaced (no preamble preserved)

@@ -30,7 +30,7 @@ async def _register_start(
     if message is None or message.chat.type != "private":
         if message is not None:
             await message.reply_text(
-                "Please use /register or /rekisteröidy in a private chat."
+                "Please use /register or /rekisteroidy in a private chat."
             )
         return ConversationHandler.END
     chat_data = context.chat_data
@@ -50,7 +50,7 @@ async def _register_start(
 async def register_start_finnish(
     update: Update, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> Union[int, str]:
-    """Start registration in Finnish (/rekisteröidy)."""
+    """Start registration in Finnish (/rekisteroidy)."""
     return await _register_start(update, context, data_manager, is_finnish=True)
 
 

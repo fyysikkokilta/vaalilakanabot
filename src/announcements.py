@@ -9,7 +9,7 @@ from telegram.ext import ContextTypes
 
 from .utils import check_title_matches_applicant_and_role, create_fiirumi_link
 from .sheets_data_manager import DataManager
-from .config import TOPIC_LIST_URL, QUESTION_LIST_URL, API_KEY, API_USERNAME
+from .config import get_topic_list_url, get_question_list_url, API_KEY, API_USERNAME
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -94,10 +94,18 @@ async def parse_fiirumi_posts(
     context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> None:
     """Parse and announce new fiirumi posts and questions based on timestamps."""
+    topic_url = get_topic_list_url()
+    question_url = get_question_list_url()
+    if not topic_url or not question_url:
+        logger.debug(
+            "Skipping Fiirumi parse: TOPIC_LIST_URL or QUESTION_LIST_URL not set "
+            "(set in bot.env or ELECTION_YEAR for derived URLs)"
+        )
+        return
     try:
         current_time = get_current_minute_start()
-        topic_json = get_fiirumi_data(TOPIC_LIST_URL)
-        question_json = get_fiirumi_data(QUESTION_LIST_URL)
+        topic_json = get_fiirumi_data(topic_url)
+        question_json = get_fiirumi_data(question_url)
         topic_list = topic_json["topic_list"]["topics"]
         question_list = question_json["topic_list"]["topics"]
         logger.debug(
@@ -149,10 +157,16 @@ async def announce_new_responses(
     context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> None:
     """Announce new responses to questions based on timestamps, runs every hour."""
-
+    question_url = get_question_list_url()
+    if not question_url:
+        logger.debug(
+            "Skipping new responses: QUESTION_LIST_URL not set "
+            "(set in bot.env or ELECTION_YEAR for derived URL)"
+        )
+        return
     try:
         current_time = get_current_minute_start()
-        question_json = get_fiirumi_data(QUESTION_LIST_URL)
+        question_json = get_fiirumi_data(question_url)
         question_list = question_json["topic_list"]["topics"]
 
         new_responses: List[Dict[str, Any]] = []

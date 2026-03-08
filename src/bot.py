@@ -298,7 +298,7 @@ async def post_init(
     register_handler = ConversationHandler(
         entry_points=[
             CommandHandler(
-                "rekisteröidy",
+                "rekisteroidy",
                 _dm_ctx(register_start_finnish, data_manager),
                 filters.ChatType.PRIVATE,
             ),

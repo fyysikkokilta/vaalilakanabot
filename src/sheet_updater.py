@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 
 from .sheets_data_manager import DataManager
 from .types import DivisionData, RoleData
-from .config import VAALILAKANA_POST_URL
+from .config import get_vaalilakana_post_url
 from .fiirumi_area_generator import get_discourse_headers
 
 YEAR = datetime.now().year
@@ -19,10 +19,11 @@ logger = logging.getLogger("vaalilakanabot")
 
 def get_current_post_content() -> Optional[str]:
     """Fetch the current content of the election sheet post."""
+    url = get_vaalilakana_post_url()
+    if not url:
+        return None
     try:
-        response = requests.get(
-            VAALILAKANA_POST_URL, headers=get_discourse_headers(), timeout=30
-        )
+        response = requests.get(url, headers=get_discourse_headers(), timeout=30)
         response.raise_for_status()
         data = response.json()
         return str(data.get("raw", ""))
@@ -111,7 +112,13 @@ async def update_election_sheet(
     """Update the election sheet in the Guild website.
 
     Preserves any preamble text above the SHEET_MARKER if it exists.
+    Does nothing if VAALILAKANA_POST_URL is not set.
     """
+    post_url = get_vaalilakana_post_url()
+    if not post_url:
+        logger.debug("Skipping election sheet update: VAALILAKANA_POST_URL not set")
+        return None
+
     # Get full data from Google Sheets (includes non-elected roles)
     try:
         vaalilakana_data = data_manager.vaalilakana_full
@@ -152,7 +159,7 @@ async def update_election_sheet(
 
     try:
         response = requests.put(
-            VAALILAKANA_POST_URL,
+            post_url,
             headers=get_discourse_headers(),
             json=payload,
             timeout=30,
