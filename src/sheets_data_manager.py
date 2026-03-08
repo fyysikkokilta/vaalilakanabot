@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, cast
 from datetime import datetime
 
 from .sheets_manager import SheetsManager
@@ -21,6 +21,10 @@ from .types import (
 
 
 logger = logging.getLogger("vaalilakanabot")
+
+# Keys added when enriching ApplicationRow -> ApplicationWithDisplay (from Users sheet).
+# Excluded when spreading app to avoid duplicate keyword arguments if sheet data contains them.
+_DISPLAY_KEYS = frozenset({"Name", "Email", "Telegram"})
 
 
 class DataManager:
@@ -509,11 +513,12 @@ class DataManager:
                     app.get("Telegram_ID"),
                 )
                 continue
+            base = {k: v for k, v in app.items() if k not in _DISPLAY_KEYS}
             disp = ApplicationWithDisplay(
+                **cast(ApplicationRow, base),
                 Name=user.get("Name", ""),
                 Email=user.get("Email", ""),
                 Telegram=user.get("Telegram", ""),
-                **app,
             )
             enriched.append(disp)
         by_group: Dict[str, List[ApplicationWithDisplay]] = {}

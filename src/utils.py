@@ -60,6 +60,14 @@ def is_active_application(app: ApplicationRow) -> bool:
     return status not in ("DENIED", "REMOVED")
 
 
+def is_pending_status(status: Optional[ApplicationStatus]) -> bool:
+    """Check if status means awaiting admin approval (pending).
+
+    Treats both '' and 'PENDING' as pending for backward compatibility.
+    """
+    return (status or "").strip() in ("", "PENDING")
+
+
 def retry_on_api_error(
     max_retries: int = 3, backoff_factor: float = 2.0
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:

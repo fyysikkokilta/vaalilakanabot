@@ -11,7 +11,7 @@ from .config import ADMIN_CHAT_ID
 from .announcements import announce_to_channels
 from .sheets_data_manager import DataManager
 from .types import ApplicationRow, ElectionStructureRow
-from .utils import get_notification_text, get_role_name
+from .utils import get_notification_text, get_role_name, is_pending_status
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -164,8 +164,7 @@ def _resolve_approval_context(
         (
             a
             for a in user_apps
-            if a.get("Role_ID") == role_id
-            and (a.get("Status") or "").strip() in ("", "PENDING")
+            if a.get("Role_ID") == role_id and is_pending_status(a.get("Status"))
         ),
         None,
     )
@@ -241,7 +240,9 @@ async def handle_admin_approval(
                 f"Application has been marked as DENIED.",
                 parse_mode="HTML",
             )
-            await _notify_applicant(context, telegram_id, role_row, is_finnish, "rejected")
+            await _notify_applicant(
+                context, telegram_id, role_row, is_finnish, "rejected"
+            )
             logger.info("Application %s rejected by admin", application_ref)
         else:
             await query.edit_message_text("❌ Error rejecting application.")

@@ -13,7 +13,12 @@ from .config import (
     SELECTING_ROLE,
     CONFIRMING_APPLICATION,
 )
-from .utils import generate_keyboard, get_translation, get_role_name, is_active_application
+from .utils import (
+    generate_keyboard,
+    get_translation,
+    get_role_name,
+    is_active_application,
+)
 from .admin_approval import send_admin_approval_request
 from .sheets_data_manager import DataManager
 
@@ -140,7 +145,11 @@ def _other_elected_roles_for_user(
     out = []
     for app in user_applications:
         role = data_manager.get_role_by_id(app.get("Role_ID", ""))
-        if role and role.get("Type") in ("BOARD", "ELECTED") and role.get("ID") != current_role_id:
+        if (
+            role
+            and role.get("Type") in ("BOARD", "ELECTED")
+            and role.get("ID") != current_role_id
+        ):
             out.append(role)
     return out
 
@@ -235,7 +244,8 @@ async def select_role(
     user_applications = data_manager.get_applications_for_user(user_id)
     existing_application = next(
         (
-            app for app in user_applications
+            app
+            for app in user_applications
             if app.get("Role_ID") == role_id and is_active_application(app)
         ),
         None,
@@ -252,7 +262,9 @@ async def select_role(
         return ConversationHandler.END
 
     if is_elected_type:
-        other_roles = _other_elected_roles_for_user(user_applications, data_manager, role_id)
+        other_roles = _other_elected_roles_for_user(
+            user_applications, data_manager, role_id
+        )
         if other_roles:
             await _send_multiple_elected_warning(query, chat_data, other_roles, role_id)
             return SELECTING_ROLE
@@ -260,7 +272,9 @@ async def select_role(
     chat_data["role_id"] = role_id
     chat_data["is_elected"] = bool(is_elected_type)
 
-    if not await _load_user_into_chat_data(user_id, chat_data, query, update, data_manager):
+    if not await _load_user_into_chat_data(
+        user_id, chat_data, query, update, data_manager
+    ):
         return ConversationHandler.END
 
     text, keyboard = _build_confirm_application_ui(chat_data, role_row)
@@ -291,7 +305,7 @@ async def confirm_application(
                 "Role_ID": role_row.get("ID", "") if role_row else role_id_str,
                 "Telegram_ID": update.effective_user.id,
                 "Fiirumi_Post": "",
-                "Status": "",
+                "Status": "PENDING",
                 "Language": "fi" if is_fi else "en",
                 "Group_ID": None,
             }
@@ -394,7 +408,9 @@ async def handle_multiple_application_choice(
 
     if query.data == "continue_multiple":
         user_id = update.effective_user.id
-        if not await _load_user_into_chat_data(user_id, chat_data, query, update, data_manager):
+        if not await _load_user_into_chat_data(
+            user_id, chat_data, query, update, data_manager
+        ):
             return ConversationHandler.END
         role_row = data_manager.get_role_by_id(str(chat_data.get("role_id", "")))
         if not role_row:
