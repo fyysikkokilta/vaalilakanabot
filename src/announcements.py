@@ -96,12 +96,6 @@ async def parse_fiirumi_posts(
     """Parse and announce new fiirumi posts and questions based on timestamps."""
     topic_url = get_topic_list_url()
     question_url = get_question_list_url()
-    if not topic_url or not question_url:
-        logger.debug(
-            "Skipping Fiirumi parse: TOPIC_LIST_URL or QUESTION_LIST_URL not set "
-            "(set in bot.env or ELECTION_YEAR for derived URLs)"
-        )
-        return
     try:
         current_time = get_current_minute_start()
         topic_json = get_fiirumi_data(topic_url)
@@ -158,12 +152,6 @@ async def announce_new_responses(
 ) -> None:
     """Announce new responses to questions based on timestamps, runs every hour."""
     question_url = get_question_list_url()
-    if not question_url:
-        logger.debug(
-            "Skipping new responses: QUESTION_LIST_URL not set "
-            "(set in bot.env or ELECTION_YEAR for derived URL)"
-        )
-        return
     try:
         current_time = get_current_minute_start()
         question_json = get_fiirumi_data(question_url)
