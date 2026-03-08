@@ -284,9 +284,8 @@ The bot automatically updates the election sheet post on Discourse with the late
 **How to add a preamble:**
 
 1. Edit the election sheet post on Discourse
-2. Add your preamble text at the top of the post
-3. Add the marker line: `---SHEET STARTS HERE---`
-4. The bot will preserve everything above the marker when updating
+2. Add your preamble text at the top of the post, **before** the `# VAALILAKANA {year} / ELECTION SHEET {year}` heading
+3. The bot detects that heading and preserves everything above it when updating
 
 **Example:**
 
@@ -297,17 +296,16 @@ Important dates:
 - Voting starts: 15.3.
 - Voting ends: 22.3.
 
----SHEET STARTS HERE---
+# VAALILAKANA 2025 / ELECTION SHEET 2025
 
 [Bot-managed election sheet content appears here]
 ```
 
 **Notes:**
 
-- The election sheet post URL is set automatically when ELECTION_YEAR is configured.
+- The election sheet post URL is set automatically when `ELECTION_YEAR` is configured.
 - The preamble can contain any Markdown formatting
-- The marker must be on its own line with no extra spaces
-- If no marker is present, the entire post will be replaced (no preamble preserved)
+- If the heading is not found in the post, the entire post is replaced (no preamble preserved)
 - The bot updates the sheet automatically every 60 seconds
 
 ### Data Validation

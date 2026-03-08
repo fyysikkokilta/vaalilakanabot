@@ -12,7 +12,7 @@ from .config import get_vaalilakana_post_url
 from .fiirumi_area_generator import get_discourse_headers
 
 YEAR = datetime.now().year
-SHEET_MARKER = "---SHEET STARTS HERE---"
+SHEET_HEADING = f"# VAALILAKANA {YEAR} / ELECTION SHEET {YEAR}"
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -35,13 +35,15 @@ def get_current_post_content() -> Optional[str]:
 def extract_preamble_and_content(full_text: str) -> Tuple[str, bool]:
     """Extract preamble from the post content.
 
+    Splits on the sheet heading line. Everything before it is the preamble.
+
     Returns:
-        Tuple of (preamble, has_marker)
-        - preamble: Text before the marker (empty if no marker found)
-        - has_marker: True if marker was found in the text
+        Tuple of (preamble, has_heading)
+        - preamble: Text before the heading (empty if heading is at the start or not found)
+        - has_heading: True if the sheet heading was found in the text
     """
-    if SHEET_MARKER in full_text:
-        parts = full_text.split(SHEET_MARKER, 1)
+    if SHEET_HEADING in full_text:
+        parts = full_text.split(SHEET_HEADING, 1)
         return parts[0].rstrip(), True
     return "", False
 
@@ -111,7 +113,7 @@ async def update_election_sheet(
 ) -> Optional[requests.Response]:
     """Update the election sheet in the Guild website.
 
-    Preserves any preamble text above the SHEET_MARKER if it exists.
+    Preserves any preamble text that appears before the sheet heading in the post.
     Does nothing if VAALILAKANA_POST_URL is not set.
     """
     post_url = get_vaalilakana_post_url()
@@ -138,18 +140,13 @@ async def update_election_sheet(
         )
         return None
 
-    preamble, has_marker = extract_preamble_and_content(current_content)
-    if has_marker:
-        logger.info(
-            "Found preamble marker, preserving preamble (%d chars)", len(preamble)
-        )
+    preamble, has_heading = extract_preamble_and_content(current_content)
+    if has_heading and preamble:
+        logger.info("Found preamble, preserving it (%d chars)", len(preamble))
 
-    # Build final content
-    if has_marker:
-        if preamble:
-            final_text = f"{preamble}\n\n{SHEET_MARKER}\n\n{sheet_content}"
-        else:
-            final_text = f"{SHEET_MARKER}\n\n{sheet_content}"
+    # Build final content: preamble (if any) followed by the sheet
+    if has_heading and preamble:
+        final_text = f"{preamble}\n\n{sheet_content}"
     else:
         final_text = sheet_content
 

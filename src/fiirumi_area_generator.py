@@ -141,7 +141,9 @@ def _topic_id_to_post_url(topic_id: int) -> Optional[str]:
         return None
 
 
-def _find_election_sheet_post_url_by_search(year: int, parent_slug: str = "") -> Optional[str]:
+def _find_election_sheet_post_url_by_search(
+    year: int, parent_slug: str = ""
+) -> Optional[str]:
     """Find the election sheet topic for the given year; return its first post URL.
 
     Strategy:
@@ -187,7 +189,8 @@ def _find_election_sheet_post_url_by_search(year: int, parent_slug: str = "") ->
         else:
             logger.warning(
                 "Slug lookup returned topic with unexpected title %r (expected %r)",
-                t_data.get("title"), title,
+                t_data.get("title"),
+                title,
             )
     except Exception as e:
         logger.warning("Slug-based lookup for election sheet topic failed: %s", e)
@@ -219,21 +222,21 @@ def _find_election_sheet_post_url_by_search(year: int, parent_slug: str = "") ->
     return None
 
 
-def _create_election_sheet_topic(year: int, category_id: int, parent_slug: str = "") -> Optional[str]:
+def _create_election_sheet_topic(
+    year: int, category_id: int, parent_slug: str = ""
+) -> Optional[str]:
     """Create the election sheet topic in the given category; return its first post URL.
 
     If the topic already exists (422), falls back to searching for it.
     """
     url = f"{BASE_URL}/posts.json"
     title = f"Vaalilakana {year}"
-    # Preamble text satisfies Discourse's minimum-body quality check.
-    # The sheet updater preserves everything above the marker when updating,
-    # so the preamble will remain even after the first automated update.
+    # Initial body: the sheet heading satisfies Discourse's minimum-body quality check
+    # and also acts as the preamble delimiter for the sheet updater.
     raw = (
-        f"# Vaalilakana {year}\n\n"
         f"Tämä postaus sisältää automaattisesti päivitetyn vaalilakanan. "
         f"This post contains the automatically updated election sheet.\n\n"
-        f"---SHEET STARTS HERE---\n\n"
+        f"# VAALILAKANA {year} / ELECTION SHEET {year}\n\n"
     )
     # Discourse often expects form data for POST /posts.json (some instances reject JSON);
     # omit Content-Type so requests sets the correct multipart boundary automatically.
@@ -265,7 +268,9 @@ def _create_election_sheet_topic(year: int, category_id: int, parent_slug: str =
                 "Election sheet topic '%s' already exists (422); body: %s", title, body
             )
             return _find_election_sheet_post_url_by_search(year, parent_slug)
-        logger.error("Failed to create election sheet topic: %s — %s", e, e.response.text[:500])
+        logger.error(
+            "Failed to create election sheet topic: %s — %s", e, e.response.text[:500]
+        )
         return None
     except Exception as e:
         logger.error("Error creating election sheet topic: %s", e)
@@ -332,9 +337,8 @@ def generate_election_areas(year: int) -> bool:
         full_slug = f"{parent_slug}/{subcat['slug']}"
         # Try slug-based lookup first, then numeric-parent-ID-based lookup as fallback
         # (some Discourse instances don't support /c/{parent_slug}/{child_slug}/show.json)
-        existing = (
-            find_category_by_slug(full_slug)
-            or find_category_by_slug(f"{parent_id}/{subcat['slug']}")
+        existing = find_category_by_slug(full_slug) or find_category_by_slug(
+            f"{parent_id}/{subcat['slug']}"
         )
 
         if not existing:
@@ -349,7 +353,9 @@ def generate_election_areas(year: int) -> bool:
                 logger.error("Failed to create subcategory '%s'", subcat["name"])
                 all_success = False
         else:
-            logger.info("Subcategory '%s' already exists (id=%s)", full_slug, existing.get("id"))
+            logger.info(
+                "Subcategory '%s' already exists (id=%s)", full_slug, existing.get("id")
+            )
 
     # Log area URLs regardless of subcategory success
     logger.info("Election area URLs:")

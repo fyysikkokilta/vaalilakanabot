@@ -234,9 +234,9 @@ Role names and divisions have `_FI` and `_EN` suffixes in data structures.
 The `update_election_sheet` job in `src/sheet_updater.py` supports preserving a preamble in the Discourse post:
 
 - Fetches current post content before updating
-- Looks for the marker: `---SHEET STARTS HERE---`
-- Preserves everything above the marker when updating the sheet
-- If no marker found, replaces entire post (no preamble preservation)
+- Looks for the heading: `# VAALILAKANA {year} / ELECTION SHEET {year}`
+- Preserves everything above that heading when updating the sheet
+- If heading not found, replaces entire post (no preamble preservation)
 
 This allows admins to add instructions or announcements that persist across automated updates.
 
