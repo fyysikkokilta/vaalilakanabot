@@ -27,23 +27,24 @@ async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
 🤖 <b>Vaalilakanabot - User Commands</b>
 
 <b>Basic Commands:</b>
-• /start - Register channel for announcements
-• /stop - Unregister channel for announcements
+• /start - Register or update your info (private chat)
+• /register - Register or update your info (private chat)
 • /sheet - Show current election sheet
 • /applications - Show your applications (private chat)
-• /register - Register or update your info (private chat, English)
 • /apply - Apply for a position (private chat)
+• /announcements - Register this chat as an announcement channel
+• /stop - Unregister this chat from announcements
 
 <b>Fun Commands:</b>
 • /jauhis - Send jauhis sticker
-• /jauh - Send jauh sticker  
+• /jauh - Send jauh sticker
 • /jauho - Send jauho sticker
 • /lauh - Send lauh sticker
 • /mauh - Send mauh sticker
 • /yauh - Send yauh sticker
 
 <b>Registration and applying (private message):</b>
-1) <b>Register first:</b> Use /register (or /rekisteroidy for Finnish). Enter your name, email, and consent. You can run it again to update your info.
+1) <b>Register first:</b> Use /start or /register (or /rekisteroidy for Finnish). Enter your name, email, and consent. You can run it again to update your info.
 2) Applications are linked to your Telegram user—only apply from your own device.
 3) Official roles are in divisions. Find them on the physical sheet in the guild room or on Fiirumi in the "vaalilakana" section.
 4) Use /apply and follow the bot. You can check your details before submitting.
@@ -73,12 +74,13 @@ async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
 🤖 <b>Vaalilakanabot - Käyttäjän komennot</b>
 
 <b>Peruskomennot:</b>
-• /start - Rekisteröi kanavan tiedotuskanavaksi
-• /stop - Poista kanava tiedotuskanavista
+• /start - Rekisteröidy tai päivitä tietosi (yksityisviesti)
+• /rekisteroidy - Rekisteröidy tai päivitä tietosi (yksityisviesti)
 • /lakana - Näytä nykyinen vaalilakana
 • /hakemukset - Näytä omat hakemuksesi (yksityisviesti)
-• /rekisteroidy - Rekisteröidy tai päivitä tietosi (yksityisviesti)
 • /hae - Hae virkaan (yksityisviesti)
+• /ilmoitukset - Rekisteröi tämä chat tiedotuskanavaksi
+• /stop - Poista tämä chat tiedotuskanavista
 
 <b>Hauskat komennot:</b>
 • /jauhis - Lähetä jauhis-tarra
@@ -89,7 +91,7 @@ async def apua_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
 • /yauh - Lähetä yauh-tarra
 
 <b>Rekisteröityminen ja hakeminen (yksityisviesti):</b>
-1) <b>Rekisteröidy ensin:</b> Käytä /rekisteroidy (tai /register englanniksi). Syötä nimesi, sähköposti ja suostumus. Voit ajaa komennon uudelleen päivittääksesi tiedot.
+1) <b>Rekisteröidy ensin:</b> Käytä /start tai /rekisteroidy (tai /register englanniksi). Syötä nimesi, sähköposti ja suostumus. Voit ajaa komennon uudelleen päivittääksesi tiedot.
 2) Hakemukset yhdistetään telegramkäyttäjääsi—hakekaa vain omalla laitteella.
 3) Toimariroolit on jaettu jaoksittain. Etsi rooli kiltiksen fyysisestä vaalilakanasta tai Fiirumilta vaalilakanaosiosta.
 4) Aloita hakeminen komennolla /hae ja seuraa botin ohjeita. Voit tarkistaa tiedot ennen lähettämistä.
@@ -109,21 +111,23 @@ Tarvitsetko apua? Ota yhteyttä raatiin!
         logger.error(e)
 
 
-async def register_channel(update: Update, data_manager: DataManager) -> None:
-    """Register a channel for announcements."""
+async def register_announcement_channel(update: Update, data_manager: DataManager) -> None:
+    """Register a channel for announcements (/ilmoitukset or /announcements)."""
     message = update.message
     if message is None:
         return
     try:
         chat_id = message.chat.id
         data_manager.add_channel(chat_id)
-        await message.reply_text("Registered as Vaalilakanabot announcement channel!")
+        await message.reply_text(
+            "✅ Kanava rekisteröity tiedotuskanavaksi! / Registered as announcement channel!"
+        )
     except Exception as e:
         logger.error(e)
 
 
 async def unregister_channel(update: Update, data_manager: DataManager) -> None:
-    """Unregister a channel from announcements."""
+    """Unregister a channel from announcements (/stop)."""
     message = update.message
     if message is None:
         return
@@ -132,11 +136,11 @@ async def unregister_channel(update: Update, data_manager: DataManager) -> None:
         removed = data_manager.remove_channel(chat_id)
         if removed:
             await message.reply_text(
-                "Channel removed from Vaalilakanabot announcement channels!"
+                "Kanava poistettu tiedotuskanavista! / Channel removed from announcement channels!"
             )
         else:
             await message.reply_text(
-                "Channel not found in registered announcement channels."
+                "Kanavaa ei löydy rekisteröidyistä tiedotuskanavista. / Channel not found in registered announcement channels."
             )
     except Exception as e:
         logger.error(e)

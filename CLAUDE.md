@@ -221,7 +221,7 @@ GitHub Actions workflow (`.github/workflows/ci.yml`):
 
 Commands come in Finnish and English pairs:
 
-- `/rekisteroidy` and `/register` - Register or update user info (required before applying)
+- `/start`, `/rekisteroidy` and `/register` - Register or update user info (required before applying; `/start` triggers English flow in private chat)
 - `/hae` and `/apply` - Start application (checks registration first)
 - `/lakana` and `/sheet` - Show election sheet
 - `/hakemukset` and `/applications` - Show user's applications (requires registration)
@@ -260,7 +260,7 @@ Admins can add roles directly in Google Sheets without bot commands:
 
 ## User Registration
 
-- **Commands**: `/register` (English) and `/rekisteroidy` (Finnish), private chat only. Implemented in **src/register_handlers.py**.
+- **Commands**: `/start` / `/register` (English) and `/rekisteroidy` (Finnish), private chat only. Implemented in **src/register_handlers.py**. `/start` triggers the English registration flow.
 - **Flow**: User is asked for full name, email, and consent (show on website's official page Yes/No). Data is upserted into the Users sheet. Running the command again shows an update intro and the same steps, then overwrites the user row.
 - **Gating**: Applying (`/hae`, `/apply`) and viewing applications (`/hakemukset`, `/applications`) require the user to exist in the Users sheet; otherwise the bot replies with a prompt to register first.
 - **Application data**: Applications store only `Telegram_ID` (and application fields). Name, email, and Telegram handle are resolved from the Users sheet via `DataManager.get_applicant_display()` and by enriching applicant lists in `_applicants_for_role_enriched()` (called via the `vaalilakana_full` property in `sheets_data_manager.py`). Admin approval and admin commands (remove, elected, fiirumi, combine) resolve names from Users by `Telegram_ID`.

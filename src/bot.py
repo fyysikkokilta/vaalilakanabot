@@ -37,7 +37,7 @@ from .admin_commands import (
     admin_help,
 )
 from .user_commands import (
-    register_channel,
+    register_announcement_channel,
     unregister_channel,
     show_election_sheet,
     show_election_sheet_en,
@@ -78,8 +78,10 @@ def _dm(
     func: Callable[..., Coroutine[Any, Any, Any]], data_manager: DataManager
 ) -> Callable[..., Coroutine[Any, Any, Any]]:
     """Wrap (update, data_manager) handler as (update, context) handler."""
+
     async def wrapper(update: Update, _: ContextTypes.DEFAULT_TYPE) -> Any:
         return await func(update, data_manager)
+
     return wrapper
 
 
@@ -87,8 +89,10 @@ def _dm_ctx(
     func: Callable[..., Coroutine[Any, Any, Any]], data_manager: DataManager
 ) -> Callable[..., Coroutine[Any, Any, Any]]:
     """Wrap (update, context, data_manager) handler as (update, context) handler."""
+
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Any:
         return await func(update, context, data_manager)
+
     return wrapper
 
 
@@ -96,8 +100,10 @@ def _job(
     func: Callable[..., Coroutine[Any, Any, Any]], data_manager: DataManager
 ) -> Callable[..., Coroutine[Any, Any, Any]]:
     """Wrap (context, data_manager) job as (context) job."""
+
     async def wrapper(context: ContextTypes.DEFAULT_TYPE) -> Any:
         return await func(context, data_manager)
+
     return wrapper
 
 
@@ -185,32 +191,55 @@ async def post_init(
 
     # Admin command handlers
     app.add_handler(CommandHandler("remove", _dm_ctx(remove_applicant, data_manager)))
-    app.add_handler(CommandHandler("add_fiirumi", _dm(add_fiirumi_to_applicant, data_manager)))
-    app.add_handler(CommandHandler("remove_fiirumi", _dm(unassociate_fiirumi, data_manager)))
+    app.add_handler(
+        CommandHandler("add_fiirumi", _dm(add_fiirumi_to_applicant, data_manager))
+    )
+    app.add_handler(
+        CommandHandler("remove_fiirumi", _dm(unassociate_fiirumi, data_manager))
+    )
     app.add_handler(CommandHandler("elected", _dm_ctx(add_elected_tag, data_manager)))
-    app.add_handler(CommandHandler("combine", _dm_ctx(combine_applicants, data_manager)))
+    app.add_handler(
+        CommandHandler("combine", _dm_ctx(combine_applicants, data_manager))
+    )
 
     # export_data removed; use Google Sheets directly for raw exports
-    app.add_handler(CommandHandler("export_officials_website", _dm(export_officials_website, data_manager)))
+    app.add_handler(
+        CommandHandler(
+            "export_officials_website", _dm(export_officials_website, data_manager)
+        )
+    )
     app.add_handler(CommandHandler("admin_help", admin_help))
 
     # User command handlers
-    app.add_handler(CommandHandler("start", _dm(register_channel, data_manager)))
     app.add_handler(CommandHandler("stop", _dm(unregister_channel, data_manager)))
+    app.add_handler(
+        CommandHandler(
+            "announcements", _dm(register_announcement_channel, data_manager)
+        )
+    )
+    app.add_handler(
+        CommandHandler("ilmoitukset", _dm(register_announcement_channel, data_manager))
+    )
     app.add_handler(CommandHandler("lakana", _dm(show_election_sheet, data_manager)))
     app.add_handler(CommandHandler("sheet", _dm(show_election_sheet_en, data_manager)))
     app.add_handler(
-        CommandHandler("hakemukset", _dm(applications, data_manager), filters.ChatType.PRIVATE)
+        CommandHandler(
+            "hakemukset", _dm(applications, data_manager), filters.ChatType.PRIVATE
+        )
     )
     app.add_handler(
-        CommandHandler("applications", _dm(applications_en, data_manager), filters.ChatType.PRIVATE)
+        CommandHandler(
+            "applications", _dm(applications_en, data_manager), filters.ChatType.PRIVATE
+        )
     )
 
     for name in STICKER_COMMANDS:
+
         async def _sticker_handler(
             update: Update, _: ContextTypes.DEFAULT_TYPE, sticker_name: str = name
         ) -> None:
             await send_sticker(update, sticker_name)
+
         app.add_handler(CommandHandler(name, _sticker_handler))
 
     app.add_handler(CommandHandler("help", help_command))
@@ -297,6 +326,11 @@ async def post_init(
     }
     register_handler = ConversationHandler(
         entry_points=[
+            CommandHandler(
+                "start",
+                _dm_ctx(register_start_english, data_manager),
+                filters.ChatType.PRIVATE,
+            ),
             CommandHandler(
                 "rekisteroidy",
                 _dm_ctx(register_start_finnish, data_manager),

@@ -84,17 +84,21 @@ docker-compose -f docker-compose.prod.yml up
 ### User Commands
 
 - `/start` - Register channel for announcements
-- `/stop` - Unregister channel from announcements
 - `/lakana` - Show current election sheet (Finnish)
 - `/sheet` - Show current election sheet (English)
 - `/hakemukset` - Show your applications (Finnish, private chat)
 - `/applications` - Show your applications (English, private chat)
 - **Registration (private chat):** You must register before applying.
+  - `/start` - Register or update your info (English, also works as entry point)
   - `/rekisteroidy` - Register or update your info (Finnish)
   - `/register` - Register or update your info (English)
 - **Applying (private chat):**
   - `/hae` - Start application form (Finnish)
   - `/apply` - Start application form (English)
+- **Announcement channel management:**
+  - `/ilmoitukset` - Register this chat for announcements (Finnish)
+  - `/announcements` - Register this chat for announcements (English)
+  - `/stop` - Unregister this chat from announcements
 - `/apua` - Show help guide (Finnish)
 - `/help` - Show help guide (English)
 
