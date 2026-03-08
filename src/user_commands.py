@@ -6,7 +6,7 @@ from typing import Dict, List, Union
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from .types import ApplicationRow, ElectionStructureRow
+from .types import ApplicationRow, ElectionStructureRow, UserRow
 from .utils import (
     vaalilakana_to_string,
     map_application_status,
@@ -173,11 +173,23 @@ def _render_applications(
     roles: List[ElectionStructureRow],
     app_rows: List[ApplicationRow],
     is_finnish: bool,
+    user: Union[UserRow, None] = None,
 ) -> str:
     role_by_id: Dict[str, ElectionStructureRow] = {
         role.get("ID", ""): role for role in roles if role.get("ID")
     }
     text = get_translation("my_applications", is_finnish)
+    if user is not None:
+        name = user.get("Name", "")
+        email = user.get("Email", "")
+        telegram = user.get("Telegram", "") or "—"
+        text += get_translation(
+            "your_info",
+            is_finnish,
+            name=name,
+            email=email,
+            telegram=telegram,
+        )
     empty_role: Dict[str, object] = {}
     for app in app_rows:
         r = role_by_id.get(app.get("Role_ID", ""), empty_role)
@@ -194,7 +206,8 @@ async def _show_applications(
         return
     try:
         user_id = update.effective_user.id
-        if not data_manager.get_user_by_telegram_id(user_id):
+        user = data_manager.get_user_by_telegram_id(user_id)
+        if not user:
             await message.reply_text(
                 get_translation("please_register_first", is_finnish=is_finnish)
             )
@@ -208,7 +221,7 @@ async def _show_applications(
             return
 
         roles = data_manager.get_all_roles()
-        text = _render_applications(roles, app_rows, is_finnish=is_finnish)
+        text = _render_applications(roles, app_rows, is_finnish=is_finnish, user=user)
         await message.reply_html(text, disable_web_page_preview=True)
     except Exception as e:
         logger.error(e)

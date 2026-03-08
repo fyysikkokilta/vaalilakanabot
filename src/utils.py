@@ -393,6 +393,10 @@ def get_translation(key: str, is_finnish: bool = True, **kwargs: Any) -> str:
             "📋 <b>Omat hakemuksesi</b>\n\n",
             "📋 <b>Your applications</b>\n\n",
         ),
+        "your_info": (
+            "👤 <b>Omat tiedot</b>\n<b>Nimi</b>: {name}\n<b>Sähköposti</b>: {email}\n<b>Telegram</b>: {telegram}\n\n",
+            "👤 <b>Your info</b>\n<b>Name</b>: {name}\n<b>Email</b>: {email}\n<b>Telegram</b>: {telegram}\n\n",
+        ),
         "no_applications": (
             "Sinulla ei ole vielä hakemuksia.",
             "You have no applications yet.",
