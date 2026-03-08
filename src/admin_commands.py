@@ -33,7 +33,7 @@ def parse_command_parameters(message_text: str, command: str) -> str:
         The parameters string without the command and @botname
     """
     # Remove the command from the beginning
-    text = message_text[len(command):].strip()
+    text = message_text[len(command) :].strip()
 
     # Remove @botname if present (handles both @botname and @botname_bot formats)
     # This regex matches @ followed by any word characters and optional _bot suffix
@@ -93,6 +93,7 @@ async def admin_help(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
 <b>Group applications:</b>
 • When applicants apply together: use /combine with all names for that role. They will appear on one line.
 • When electing a group: use /elected with <b>all</b> members listed (e.g. /elected Role, Name1, Name2). The bot will reject if any group member is missing.
+• To <b>remove grouping</b>: clear the <code>Group_ID</code> cell(s) directly in the <b>Applications</b> sheet in Google Sheets. The applicants will then appear on separate lines again.
 
 <b>Important Notes:</b>
 • All commands work only in admin chat
@@ -119,7 +120,10 @@ async def remove_applicant(
             return
 
         result = await _parse_admin_role_names(
-            message, data_manager, "/remove", 1,
+            message,
+            data_manager,
+            "/remove",
+            1,
             "Invalid parameters - /remove <position>, <name>",
         )
         if not result:
@@ -173,7 +177,10 @@ async def add_fiirumi_to_applicant(update: Update, data_manager: DataManager) ->
             return
 
         result = await _parse_admin_role_names(
-            message, data_manager, "/add_fiirumi", 2,
+            message,
+            data_manager,
+            "/add_fiirumi",
+            2,
             "Invalid parameters - /add_fiirumi <position>, <name>, <thread_id>",
         )
         if not result:
@@ -204,7 +211,10 @@ async def unassociate_fiirumi(update: Update, data_manager: DataManager) -> None
             return
 
         result = await _parse_admin_role_names(
-            message, data_manager, "/remove_fiirumi", 1,
+            message,
+            data_manager,
+            "/remove_fiirumi",
+            1,
             "Invalid parameters - /remove_fiirumi <position>, <name>",
         )
         if not result:
