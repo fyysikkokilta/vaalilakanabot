@@ -141,85 +141,35 @@ def _topic_id_to_post_url(topic_id: int) -> Optional[str]:
         return None
 
 
-def _find_election_sheet_post_url_by_search(
-    year: int, parent_slug: str = ""
-) -> Optional[str]:
-    """Find the election sheet topic for the given year; return its first post URL.
-
-    Strategy:
-    1. Category topic list (parent or vaalilakana sub) — reliable, no search index lag.
-    2. Direct slug lookup via /t/vaalilakana-{year}.json.
-    3. Discourse search API as last resort.
-    """
-    title = f"Vaalilakana {year}"
-
-    # 1. Category topic-list scan — works even if search index lags
-    for cat_slug in filter(None, [parent_slug]):
-        list_url = f"{BASE_URL}/c/{cat_slug}/l/latest.json"
-        logger.info("Scanning category topic list: %s", list_url)
-        try:
-            r = requests.get(list_url, headers=get_discourse_headers(), timeout=30)
-            r.raise_for_status()
-            topics = r.json().get("topic_list", {}).get("topics", [])
-            logger.info(
-                "Category '%s' has %d topic(s): %s",
-                cat_slug,
-                len(topics),
-                [t.get("title") for t in topics],
-            )
-            for topic in topics:
-                if topic.get("title") == title:
-                    topic_id = topic.get("id")
-                    if topic_id:
-                        return _topic_id_to_post_url(int(topic_id))
-        except Exception as e:
-            logger.warning("Category list scan failed for '%s': %s", cat_slug, e)
-
-    # 2. Direct slug lookup — Discourse auto-generates slug as lowercase-hyphenated title
-    slug_url = f"{BASE_URL}/t/vaalilakana-{year}.json"
-    logger.info("Trying slug lookup: %s", slug_url)
+def _find_by_category_list(title: str, parent_slug: str) -> Optional[str]:
+    """Scan the parent category's topic list for a topic with the given title."""
+    if not parent_slug:
+        return None
+    list_url = f"{BASE_URL}/c/{parent_slug}/l/latest.json"
+    logger.info("Scanning category topic list: %s", list_url)
     try:
-        response = requests.get(slug_url, headers=get_discourse_headers(), timeout=30)
-        response.raise_for_status()
-        t_data = response.json()
-        if t_data.get("title") == title:
-            url = _first_post_url_from_topic_data(t_data)
-            if url:
-                return url
-        else:
-            logger.warning(
-                "Slug lookup returned topic with unexpected title %r (expected %r)",
-                t_data.get("title"),
-                title,
-            )
-    except Exception as e:
-        logger.warning("Slug-based lookup for election sheet topic failed: %s", e)
-
-    # 3. Search API
-    logger.info("Trying search API for title: %r", title)
-    try:
-        response = requests.get(
-            f"{BASE_URL}/search.json",
-            headers=get_discourse_headers(),
-            params={"q": title},
-            timeout=30,
-        )
-        response.raise_for_status()
-        data = response.json()
+        r = requests.get(list_url, headers=get_discourse_headers(), timeout=30)
+        r.raise_for_status()
+        topics = r.json().get("topic_list", {}).get("topics", [])
         logger.info(
-            "Search returned %d topic(s), %d post(s)",
-            len(data.get("topics", [])),
-            len(data.get("posts", [])),
+            "Category '%s' has %d topic(s): %s",
+            parent_slug,
+            len(topics),
+            [t.get("title") for t in topics],
         )
-        for topic in data.get("topics", []):
+        for topic in topics:
             if topic.get("title") == title:
                 topic_id = topic.get("id")
                 if topic_id:
                     return _topic_id_to_post_url(int(topic_id))
     except Exception as e:
-        logger.warning("Search API fallback for election sheet topic failed: %s", e)
-
+        logger.warning("Category list scan failed for '%s': %s", parent_slug, e)
     return None
+
+
+def _find_election_sheet_post_url(year: int, parent_slug: str) -> Optional[str]:
+    """Find the election sheet topic for the given year via the parent category topic list."""
+    return _find_by_category_list(f"Vaalilakana {year}", parent_slug)
 
 
 def _create_election_sheet_topic(
@@ -267,7 +217,7 @@ def _create_election_sheet_topic(
             logger.info(
                 "Election sheet topic '%s' already exists (422); body: %s", title, body
             )
-            return _find_election_sheet_post_url_by_search(year, parent_slug)
+            return _find_election_sheet_post_url(year, parent_slug)
         logger.error(
             "Failed to create election sheet topic: %s — %s", e, e.response.text[:500]
         )
@@ -367,7 +317,7 @@ def generate_election_areas(year: int) -> bool:
         logger.info("Successfully generated all election areas for year %d", year)
 
     # Find or create the election sheet topic in the parent category
-    post_url = _find_election_sheet_post_url_by_search(year, parent_slug)
+    post_url = _find_election_sheet_post_url(year, parent_slug)
     if not post_url:
         post_url = _create_election_sheet_topic(year, parent_id, parent_slug)
     if post_url:
