@@ -1,8 +1,16 @@
 *.env
 
 __pycache__/
+*.egg-info
+env
+.venv
+venv
+.mypy_cache
 
 .vscode/
 
 # Local service account credentials (not committed)
 google_credentials.json
+
+# Claude
+.claude

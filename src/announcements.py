@@ -2,13 +2,14 @@
 
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, List, Tuple
 
 import requests
 from telegram.ext import ContextTypes
 
 from .utils import check_title_matches_applicant_and_role, create_fiirumi_link
 from .sheets_data_manager import DataManager
-from .config import TOPIC_LIST_URL, QUESTION_LIST_URL, API_KEY, API_USERNAME
+from .config import get_topic_list_url, get_question_list_url, API_KEY, API_USERNAME
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -19,7 +20,8 @@ def get_current_minute_start() -> datetime:
     return now.replace(second=0, microsecond=0)
 
 
-def get_fiirumi_data(url: str):
+def get_fiirumi_data(url: str) -> Any:
+    """Get Fiirumi data from the given URL."""
     # Without headers, the request will fetch cached data
     # This in turn causes the bot to not announce new posts and questions
     headers = {
@@ -47,7 +49,7 @@ def is_recent_timestamp(
 
 async def announce_to_channels(
     message: str, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
-):
+) -> None:
     """Announce a message to all registered channels."""
     for channel in data_manager.channels:
         try:
@@ -60,18 +62,52 @@ async def announce_to_channels(
             continue
 
 
+def _link_topic_to_applicants(
+    topic: Dict[str, Any], data_manager: DataManager
+) -> Tuple[str, List[str]]:
+    """Link a topic to matching applicants; return (fiirumi_link, linked_applicants)."""
+    t_id = topic["id"]
+    title = topic["title"]
+    fiirumi_link = create_fiirumi_link(t_id)
+    linked = []
+    for role_data in data_manager.vaalilakana:
+        for applicant in role_data.get("Applicants", []):
+            applicant_name = str(applicant.get("Name") or "")
+            role_fi = str(role_data.get("Role_FI") or "")
+            role_en = str(role_data.get("Role_EN") or "")
+            if check_title_matches_applicant_and_role(
+                title, applicant_name, role_fi, role_en
+            ):
+                role_id = role_data.get("ID", "")
+                role_row = data_manager.get_role_by_id(role_id)
+                if role_row is not None:
+                    data_manager.set_applicant_fiirumi(
+                        role_row, applicant_name, fiirumi_link
+                    )
+                linked.append(
+                    f"{role_data.get('Role_EN') or ''}: {applicant.get('Name') or ''}"
+                )
+    return fiirumi_link, linked
+
+
 async def parse_fiirumi_posts(
     context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
-):
+) -> None:
     """Parse and announce new fiirumi posts and questions based on timestamps."""
-
+    topic_url = get_topic_list_url()
+    question_url = get_question_list_url()
+    if not topic_url or not question_url:
+        logger.debug(
+            "Skipping Fiirumi parse: TOPIC_LIST_URL or QUESTION_LIST_URL not set "
+            "(set in bot.env or ELECTION_YEAR for derived URLs)"
+        )
+        return
     try:
         current_time = get_current_minute_start()
-        topic_json = get_fiirumi_data(TOPIC_LIST_URL)
-        question_json = get_fiirumi_data(QUESTION_LIST_URL)
+        topic_json = get_fiirumi_data(topic_url)
+        question_json = get_fiirumi_data(question_url)
         topic_list = topic_json["topic_list"]["topics"]
         question_list = question_json["topic_list"]["topics"]
-
         logger.debug(
             "Retrieved %d topics and %d questions", len(topic_list), len(question_list)
         )
@@ -84,81 +120,56 @@ async def parse_fiirumi_posts(
         logger.error("Error fetching Fiirumi data: %s", e)
         return
 
-    # Check for new posts (created in the last minute)
     for topic in topic_list:
-        t_id = topic["id"]
-        title = topic["title"]
         created_at = topic.get("created_at")
+        if not (created_at and is_recent_timestamp(created_at, current_time)):
+            continue
+        title = topic["title"]
+        logger.info("Found new post: %s (ID: %s)", title, topic["id"])
+        fiirumi_link, linked = _link_topic_to_applicants(topic, data_manager)
+        if linked:
+            logger.info("Auto-linked post '%s' to applicants: %s", title, linked)
+        await announce_to_channels(
+            f"<b>Uusi postaus Fiirumilla!</b>\n"
+            f"<b>New post on Fiirumi!</b>\n"
+            f'<a href="{fiirumi_link}">{title}</a>',
+            context,
+            data_manager,
+        )
 
-        if created_at and is_recent_timestamp(created_at, current_time):
-            logger.info("Found new post: %s (ID: %s)", title, t_id)
-
-            # Try to automatically link this post to an applicant
-            fiirumi_link = create_fiirumi_link(t_id)
-            linked_applicants = []
-
-            # Check all elected roles for updates using flattened structure
-            for role_data in data_manager.vaalilakana:
-                for applicant in role_data.get("Applicants", []):
-                    if check_title_matches_applicant_and_role(
-                        title,
-                        applicant.get("Name"),
-                        role_data.get("Role_FI"),
-                        role_data.get("Role_EN"),
-                    ):
-                        # Link the post to this applicant (queue the status update)
-                        data_manager.set_applicant_fiirumi(
-                            role_data,
-                            applicant.get("Name"),
-                            fiirumi_link,
-                        )
-                        linked_applicants.append(
-                            f"{role_data.get('Role_EN')}: {applicant.get('Name')}"
-                        )
-
-            # Log successful auto-links
-            if linked_applicants:
-                logger.info(
-                    "Auto-linked post '%s' to applicants: %s", title, linked_applicants
-                )
-
-            await announce_to_channels(
-                f"<b>Uusi postaus Fiirumilla!</b>\n"
-                f"<b>New post on Fiirumi!</b>\n"
-                f'<a href="{fiirumi_link}">{title}</a>',
-                context,
-                data_manager,
-            )
-
-    # Check for new questions (created in the last minute)
     for question in question_list:
-        t_id = question["id"]
-        title = question["title"]
         created_at = question.get("created_at")
-
-        if created_at and is_recent_timestamp(created_at, current_time):
-            logger.info("Found new question: %s (ID: %s)", title, t_id)
-
-            await announce_to_channels(
-                f"<b>Uusi kysymys Fiirumilla!</b>\n"
-                f"<b>New question on Fiirumi!</b>\n"
-                f'<a href="{create_fiirumi_link(t_id)}">{title}</a>',
-                context,
-                data_manager,
-            )
+        if not (created_at and is_recent_timestamp(created_at, current_time)):
+            continue
+        title = question["title"]
+        t_id = question["id"]
+        logger.info("Found new question: %s (ID: %s)", title, t_id)
+        await announce_to_channels(
+            f"<b>Uusi kysymys Fiirumilla!</b>\n"
+            f"<b>New question on Fiirumi!</b>\n"
+            f'<a href="{create_fiirumi_link(t_id)}">{title}</a>',
+            context,
+            data_manager,
+        )
 
 
 async def announce_new_responses(
     context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
-):
+) -> None:
     """Announce new responses to questions based on timestamps, runs every hour."""
-
+    question_url = get_question_list_url()
+    if not question_url:
+        logger.debug(
+            "Skipping new responses: QUESTION_LIST_URL not set "
+            "(set in bot.env or ELECTION_YEAR for derived URL)"
+        )
+        return
     try:
         current_time = get_current_minute_start()
-        question_json = get_fiirumi_data(QUESTION_LIST_URL)
+        question_json = get_fiirumi_data(question_url)
         question_list = question_json["topic_list"]["topics"]
 
-        new_responses = []
+        new_responses: List[Dict[str, Any]] = []
 
         for question in question_list:
             t_id = question["id"]

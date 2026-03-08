@@ -16,22 +16,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.13"
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-${{ env.pythonLocation }}-pip-${{ hashFiles('**/requirements.txt') }}
+          key: ${{ runner.os }}-${{ env.pythonLocation }}-pip-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.pythonLocation }}-pip-
-      - name: Install dependencies
-        run: pip install -r requirements.txt && pip install pylint
+      - name: Install project and dev dependencies
+        run: pip install -e ".[dev]"
       - name: Run pylint
-        run: pylint *.py
+        run: pylint src
+      - name: Run mypy
+        run: mypy src
 
   build:
     needs: [linting]

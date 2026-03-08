@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vaalilakanabot"
+version = "0.1.0"
+description = "Telegram bot for guild election (vaalilakana) management"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "python-telegram-bot[job-queue]>=22.6",
+    "requests>=2.32.5",
+    "gspread>=6.2.1",
+    "google-auth>=2.49.0",
+    "cachetools>=7.0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.19",
+    "pyright>=1.1.408",
+    "pylint>=4.0",
+]
+
+[project.scripts]
+vaalilakanabot = "src.bot:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_ignores = true
+check_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+strict_optional = true
+strict = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["gspread.*", "telegram.*", "google.oauth2.*", "google.oauth2.service_account.*", "cachetools.*", "requests.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["src.sheets_manager"]
+# Cached get_all_roles() causes role/applicants to be inferred as Any in callers
+warn_return_any = false
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+
+[tool.pylint.main]
+jobs = 0
+
+[tool.pylint.messages_control]
+disable = [
+    "broad-except",
+    "too-many-locals",
+    "too-many-arguments",
+    "too-many-statements",
+    "too-many-nested-blocks",
+    "too-many-return-statements",
+    "too-many-public-methods",
+]
+
+[tool.pylint.format]
+max-line-length = 160
+
+[tool.pylint.basic]
+argument-naming-style = "[a-z_][a-z0-9_]{0,30}"
+attr-naming-style = "[a-z_][a-z0-9_]{0,30}"
+const-naming-style = "[a-zA-Z_][a-zA-Z0-9_]{0,30}"
+variable-naming-style = "[a-zA-Z_][a-zA-Z0-9_]{0,30}"
+
+[tool.pylint.typecheck]
+generated-members = true
