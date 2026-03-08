@@ -111,7 +111,9 @@ Tarvitsetko apua? Ota yhteyttä raatiin!
         logger.error(e)
 
 
-async def register_announcement_channel(update: Update, data_manager: DataManager) -> None:
+async def register_announcement_channel(
+    update: Update, data_manager: DataManager
+) -> None:
     """Register a channel for announcements (/ilmoitukset or /announcements)."""
     message = update.message
     if message is None:
@@ -178,7 +180,7 @@ def _render_applications(
     role_by_id: Dict[str, ElectionStructureRow] = {
         role.get("ID", ""): role for role in roles if role.get("ID")
     }
-    text = get_translation("my_applications", is_finnish)
+    text = ""
     if user is not None:
         name = user.get("Name", "")
         email = user.get("Email", "")
@@ -190,6 +192,7 @@ def _render_applications(
             email=email,
             telegram=telegram,
         )
+    text += get_translation("my_applications", is_finnish)
     empty_role: Dict[str, object] = {}
     for app in app_rows:
         r = role_by_id.get(app.get("Role_ID", ""), empty_role)
