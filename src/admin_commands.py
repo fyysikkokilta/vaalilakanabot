@@ -423,7 +423,16 @@ async def export_officials_website(update: Update, data_manager: DataManager) ->
             _write_officials_role_row(output, role, consented_applicants)
 
         output.seek(0)
-        csv_bytes = BytesIO(output.getvalue().encode("utf-8"))
+        csv_content = output.getvalue()
+        csv_bytes = BytesIO(csv_content.encode("utf-8"))
+
+        if not csv_content.strip():
+            await message.reply_text(
+                "There are no officials to export. Either no one has been marked as "
+                "elected with consent to show on the website, or no elected officials "
+                "have given consent on the Users sheet."
+            )
+            return
 
         # Add info message about consent filtering
         info_msg = "Officials data exported successfully."
