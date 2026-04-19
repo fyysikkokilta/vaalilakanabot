@@ -100,7 +100,7 @@ async def admin_help(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
 • Thread ID can be found in Fiirumi post URL
 • Deadline format: DD.MM. (e.g., 15.12.)
 • <b>Division and role names support both Finnish and English</b>
-• If a name is not found, the bot will show available options
+• If a position or name is not found, the bot replies with an error — check the spelling against the Google Sheet
 • Commands work with or without @botname mentions
 • <b>Google Sheets provides version history and collaborative editing</b>
             """

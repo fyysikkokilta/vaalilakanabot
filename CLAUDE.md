@@ -88,18 +88,18 @@ The `process_application_queue` job runs every 60 seconds to flush these queues 
 
 ### Job Queue Schedule
 
-All jobs run every 60 seconds starting from August 10, 2025:
+Jobs are scheduled to start from August 10, 2025:
 
-- `parse_fiirumi_posts` - Checks for new Discourse posts/questions
-- `announce_new_responses` - Announces new forum responses (runs hourly)
-- `update_election_sheet` - Updates the election sheet post on Discourse
-- `process_application_queue` - Flushes queued Google Sheets operations
+- `parse_fiirumi_posts` - Checks for new Discourse posts/questions (every 60 seconds)
+- `announce_new_responses` - Announces new forum responses (every hour)
+- `update_election_sheet` - Updates the election sheet post on Discourse (every 60 seconds)
+- `process_application_queue` - Flushes queued Google Sheets operations (every 60 seconds)
 
 ### Admin Approval Flow
 
 Applications for elected positions (BOARD, ELECTED, AUDITOR types) require admin approval:
 
-1. User submits application → queued with empty Status (pending)
+1. User submits application → queued with Status `PENDING` (empty Status is also treated as pending)
 2. Admin chat receives approval request with ✅ Approve / ❌ Reject buttons
 3. Admin action → status updated to APPROVED or DENIED
 4. Queue flush → Google Sheets updated
@@ -149,7 +149,7 @@ The bot requires `ELECTION_YEAR` to be set (to the current election year). It us
 - Parent category: `vaalipeli-{year}` (e.g., "Vaalipeli 2025") — election sheet topic is posted here
 - Subcategory: `esittelyt` (Introductions)
 - Subcategory: `kysymykset` (Questions)
-- Election sheet topic: a topic titled "Vaalilakana {year}" in the parent category (first post URL is used as VAALILAKANA_POST_URL when not set)
+- Election sheet topic: a topic titled "Vaalilakana {year}" in the parent category; its first-post URL is stored in config and used by the sheet updater (no env var needed)
 
 **Behavior**:
 

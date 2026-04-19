@@ -52,7 +52,6 @@ This project uses GitHub Actions for continuous integration and deployment:
 - Create Discourse api keys to be used by the bot.
 - Create an admin Telegram group and get the id of the group using, for example, `@RawDataBot`.
 - **Set `ELECTION_YEAR`** in `bot.env` to the current election year (e.g. `ELECTION_YEAR=2025`). This is required for Discourse area generation and for all Fiirumi URLs.
-- Create the post for the Election sheet. The post should contain a separate empty message that will be edited by the bot.
 - Create Google service account credentials with access to Google Sheets API for the bot to use and export the credentials as `google_credentials.json`.
 - Create `bot.env` according to the example file `bot.env.example`.
 - Run the bot to populate the Google Sheets document.
@@ -83,7 +82,6 @@ docker-compose -f docker-compose.prod.yml up
 
 ### User Commands
 
-- `/start` - Register channel for announcements
 - `/lakana` - Show current election sheet (Finnish)
 - `/sheet` - Show current election sheet (English)
 - `/hakemukset` - Show your applications (Finnish, private chat)
