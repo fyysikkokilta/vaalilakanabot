@@ -1,5 +1,6 @@
 """Announcement and notification functionality."""
 
+import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Tuple
@@ -9,7 +10,9 @@ from telegram.ext import ContextTypes
 
 from .utils import check_title_matches_applicant_and_role, create_fiirumi_link
 from .sheets_data_manager import DataManager
-from .config import get_topic_list_url, get_question_list_url, API_KEY, API_USERNAME
+from .types import ApplicationWithDisplay, ElectionStructureRow, RoleData
+from .config import get_topic_list_url, get_question_list_url
+from .fiirumi_area_generator import get_discourse_headers
 
 logger = logging.getLogger("vaalilakanabot")
 
@@ -22,13 +25,8 @@ def get_current_minute_start() -> datetime:
 
 def get_fiirumi_data(url: str) -> Any:
     """Get Fiirumi data from the given URL."""
-    # Without headers, the request will fetch cached data
-    # This in turn causes the bot to not announce new posts and questions
-    headers = {
-        "Api-Key": API_KEY,
-        "Api-Username": API_USERNAME,
-    }
-    response = requests.get(url, headers=headers, timeout=10)
+    # Using authenticated headers bypasses the anonymous cache so we see new posts.
+    response = requests.get(url, headers=get_discourse_headers(), timeout=10)
     return response.json()
 
 
@@ -50,43 +48,66 @@ def is_recent_timestamp(
 async def announce_to_channels(
     message: str, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> None:
-    """Announce a message to all registered channels."""
-    for channel in data_manager.channels:
+    """Announce a message to all registered channels concurrently."""
+    channels = list(data_manager.channels)
+    if not channels:
+        return
+
+    async def _send(channel_id: int) -> Tuple[int, Any]:
         try:
-            await context.bot.send_message(
-                channel.get("Channel_ID"), message, parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.error(e)
-            data_manager.remove_channel(channel.get("Channel_ID"))
+            await context.bot.send_message(channel_id, message, parse_mode="HTML")
+            return channel_id, None
+        except Exception as e:  # pylint: disable=broad-except
+            return channel_id, e
+
+    results = await asyncio.gather(
+        *(_send(c.get("Channel_ID")) for c in channels)
+    )
+    for channel_id, error in results:
+        if error is not None:
+            logger.error(error)
+            data_manager.remove_channel(channel_id)
+
+
+# (role_data, applicant, role_row) — built once per parse_fiirumi_posts run
+ApplicantIndex = List[
+    Tuple[RoleData, ApplicationWithDisplay, ElectionStructureRow]
+]
+
+
+def _build_applicant_index(data_manager: DataManager) -> ApplicantIndex:
+    """Build a flat list of matchable applicants, with the role row preloaded."""
+    index: ApplicantIndex = []
+    for role_data in data_manager.vaalilakana:
+        role_row = data_manager.get_role_by_id(role_data.get("ID", ""))
+        if role_row is None:
             continue
+        for applicant in role_data.get("Applicants", []):
+            index.append((role_data, applicant, role_row))
+    return index
 
 
 def _link_topic_to_applicants(
-    topic: Dict[str, Any], data_manager: DataManager
+    topic: Dict[str, Any],
+    data_manager: DataManager,
+    applicant_index: ApplicantIndex,
 ) -> Tuple[str, List[str]]:
     """Link a topic to matching applicants; return (fiirumi_link, linked_applicants)."""
     t_id = topic["id"]
     title = topic["title"]
     fiirumi_link = create_fiirumi_link(t_id)
-    linked = []
-    for role_data in data_manager.vaalilakana:
-        for applicant in role_data.get("Applicants", []):
-            applicant_name = str(applicant.get("Name") or "")
-            role_fi = str(role_data.get("Role_FI") or "")
-            role_en = str(role_data.get("Role_EN") or "")
-            if check_title_matches_applicant_and_role(
-                title, applicant_name, role_fi, role_en
-            ):
-                role_id = role_data.get("ID", "")
-                role_row = data_manager.get_role_by_id(role_id)
-                if role_row is not None:
-                    data_manager.set_applicant_fiirumi(
-                        role_row, applicant_name, fiirumi_link
-                    )
-                linked.append(
-                    f"{role_data.get('Role_EN') or ''}: {applicant.get('Name') or ''}"
-                )
+    linked: List[str] = []
+    for role_data, applicant, role_row in applicant_index:
+        applicant_name = str(applicant.get("Name") or "")
+        role_fi = str(role_data.get("Role_FI") or "")
+        role_en = str(role_data.get("Role_EN") or "")
+        if check_title_matches_applicant_and_role(
+            title, applicant_name, role_fi, role_en
+        ):
+            data_manager.set_applicant_fiirumi(
+                role_row, applicant_name, fiirumi_link
+            )
+            linked.append(f"{role_en}: {applicant_name}")
     return fiirumi_link, linked
 
 
@@ -98,8 +119,10 @@ async def parse_fiirumi_posts(
     question_url = get_question_list_url()
     try:
         current_time = get_current_minute_start()
-        topic_json = get_fiirumi_data(topic_url)
-        question_json = get_fiirumi_data(question_url)
+        topic_json, question_json = await asyncio.gather(
+            asyncio.to_thread(get_fiirumi_data, topic_url),
+            asyncio.to_thread(get_fiirumi_data, question_url),
+        )
         topic_list = topic_json["topic_list"]["topics"]
         question_list = question_json["topic_list"]["topics"]
         logger.debug(
@@ -114,13 +137,21 @@ async def parse_fiirumi_posts(
         logger.error("Error fetching Fiirumi data: %s", e)
         return
 
+    applicant_index: ApplicantIndex = []
+    index_built = False
+
     for topic in topic_list:
         created_at = topic.get("created_at")
         if not (created_at and is_recent_timestamp(created_at, current_time)):
             continue
         title = topic["title"]
         logger.info("Found new post: %s (ID: %s)", title, topic["id"])
-        fiirumi_link, linked = _link_topic_to_applicants(topic, data_manager)
+        if not index_built:
+            applicant_index = _build_applicant_index(data_manager)
+            index_built = True
+        fiirumi_link, linked = _link_topic_to_applicants(
+            topic, data_manager, applicant_index
+        )
         if linked:
             logger.info("Auto-linked post '%s' to applicants: %s", title, linked)
         await announce_to_channels(
@@ -154,7 +185,7 @@ async def announce_new_responses(
     question_url = get_question_list_url()
     try:
         current_time = get_current_minute_start()
-        question_json = get_fiirumi_data(question_url)
+        question_json = await asyncio.to_thread(get_fiirumi_data, question_url)
         question_list = question_json["topic_list"]["topics"]
 
         new_responses: List[Dict[str, Any]] = []

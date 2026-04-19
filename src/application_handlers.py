@@ -136,24 +136,6 @@ def _existing_application_message_key(application: ApplicationRow) -> str:
     return "pending_application"
 
 
-def _other_elected_roles_for_user(
-    user_applications: list[ApplicationRow],
-    data_manager: DataManager,
-    current_role_id: str = "",
-) -> list[ElectionStructureRow]:
-    """Return list of role rows for user's other elected/board applications."""
-    out = []
-    for app in user_applications:
-        role = data_manager.get_role_by_id(app.get("Role_ID", ""))
-        if (
-            role
-            and role.get("Type") in ("BOARD", "ELECTED")
-            and role.get("ID") != current_role_id
-        ):
-            out.append(role)
-    return out
-
-
 def _build_confirm_application_ui(
     chat_data: Dict[str, Any], role_row: ElectionStructureRow
 ) -> Tuple[str, InlineKeyboardMarkup]:
@@ -262,9 +244,7 @@ async def select_role(
         return ConversationHandler.END
 
     if is_elected_type:
-        other_roles = _other_elected_roles_for_user(
-            user_applications, data_manager, role_id
-        )
+        other_roles = data_manager.get_other_elected_roles_for_user(user_id, role_id)
         if other_roles:
             await _send_multiple_elected_warning(query, chat_data, other_roles, role_id)
             return SELECTING_ROLE

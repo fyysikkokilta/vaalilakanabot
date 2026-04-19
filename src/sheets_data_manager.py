@@ -136,6 +136,21 @@ class DataManager:
             logger.error("Error getting applications for user %s: %s", telegram_id, e)
             return []
 
+    def get_other_elected_roles_for_user(
+        self, telegram_id: int, current_role_id: str = ""
+    ) -> List[ElectionStructureRow]:
+        """Return role rows for the user's other BOARD/ELECTED applications."""
+        out: List[ElectionStructureRow] = []
+        for app in self.get_applications_for_user(telegram_id):
+            role = self.get_role_by_id(app.get("Role_ID", ""))
+            if (
+                role
+                and role.get("Type") in ("BOARD", "ELECTED")
+                and role.get("ID") != current_role_id
+            ):
+                out.append(role)
+        return out
+
     def get_user_by_telegram_id(self, telegram_id: int) -> Optional[UserRow]:
         """Get a user by Telegram ID (includes queued upserts). Use this for all user lookups."""
         return self.sheets_manager.get_user_by_telegram_id(telegram_id)
@@ -488,19 +503,15 @@ class DataManager:
 
     def _applicants_for_role_enriched(
         self,
-        role: ElectionStructureRow,
-        all_applications: List[ApplicationRow],
+        role_apps: List[ApplicationRow],
         users_by_id: Optional[Dict[int, UserRow]] = None,
     ) -> List[ApplicationWithDisplay]:
-        """Return enriched and group-merged applicants for one role."""
-        raw = [
-            app
-            for app in all_applications
-            if app.get("Role_ID") == role.get("ID")
-            and app.get("Status", "") in ("APPROVED", "ELECTED")
-        ]
+        """Return enriched and group-merged applicants for one role.
+
+        role_apps must already be filtered to this role and to APPROVED/ELECTED status.
+        """
         enriched: List[ApplicationWithDisplay] = []
-        for app in raw:
+        for app in role_apps:
             user = (
                 users_by_id.get(app.get("Telegram_ID"))
                 if users_by_id is not None
@@ -552,6 +563,13 @@ class DataManager:
         roles = self.get_all_roles()
         all_applications = self.get_all_applications()
         users_by_id = self._build_users_by_id()
+        # Bucket active approved/elected apps by Role_ID once: avoids scanning all apps per role.
+        apps_by_role: Dict[str, List[ApplicationRow]] = {}
+        for app in all_applications:
+            if app.get("Status", "") in ("APPROVED", "ELECTED"):
+                role_id = app.get("Role_ID")
+                if role_id:
+                    apps_by_role.setdefault(role_id, []).append(app)
         divisions_dict: Dict[str, DivisionData] = {}
         for role in roles:
             div_fi = role.get("Division_FI")
@@ -561,7 +579,7 @@ class DataManager:
                     Division_FI=div_fi, Division_EN=div_en, Roles=[]
                 )
             applicants = self._applicants_for_role_enriched(
-                role, all_applications, users_by_id
+                apps_by_role.get(role.get("ID", ""), []), users_by_id
             )
             divisions_dict[div_fi]["Roles"].append(
                 RoleData(

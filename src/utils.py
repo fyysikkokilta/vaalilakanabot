@@ -188,7 +188,7 @@ def vaalilakana_to_string(vaalilakana: List[RoleData], is_finnish: bool) -> str:
     for role_data in vaalilakana:
         role_type = role_data.get("Type")
         if role_type == "BOARD":
-            board_roles.append((role_data))
+            board_roles.append(role_data)
         elif role_type == "ELECTED":
             officials_roles.append(role_data)
 

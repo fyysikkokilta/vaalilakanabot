@@ -351,22 +351,16 @@ def _write_officials_role_row(
 
 
 def _consented_applicants_for_role_unmerged(
-    all_applications: List[ApplicationRow],
-    role_id: str,
+    elected_apps: List[ApplicationRow],
     role: ElectionStructureRow,
     users_by_id: Dict[int, UserRow],
 ) -> Tuple[List[ConsentedApplicant], int]:
-    """Return (list of {name, telegram}, skipped_count) from unmerged applications.
+    """Return (list of {name, telegram}, skipped_count) from elected applications.
     Applies consent per individual so group members without consent are excluded.
     """
     consented: List[ConsentedApplicant] = []
     skipped = 0
-    elected = [
-        a
-        for a in all_applications
-        if a.get("Role_ID") == role_id and a.get("Status") == "ELECTED"
-    ]
-    for app in elected:
+    for app in elected_apps:
         user = users_by_id.get(app.get("Telegram_ID"))
         if user is None:
             skipped += 1
@@ -407,15 +401,24 @@ async def export_officials_website(update: Update, data_manager: DataManager) ->
         output = StringIO()
         all_users = data_manager.get_all_users()
         users_by_id = {user.get("Telegram_ID"): user for user in all_users}
-        all_applications = data_manager.get_all_applications()
+        # Bucket elected applications by Role_ID once (O(A)) instead of rescanning per role.
+        elected_by_role: Dict[str, List[ApplicationRow]] = {}
+        for app in data_manager.get_all_applications():
+            if app.get("Status") != "ELECTED":
+                continue
+            rid = app.get("Role_ID")
+            if rid:
+                elected_by_role.setdefault(rid, []).append(app)
         skipped_count = 0
 
         for role in data_manager.get_all_roles():
             if role.get("Type") == "BOARD":
                 continue
-            role_id = role.get("ID", "")
+            elected_apps = elected_by_role.get(role.get("ID", ""), [])
+            if not elected_apps:
+                continue
             consented_applicants, skipped = _consented_applicants_for_role_unmerged(
-                all_applications, role_id, role, users_by_id
+                elected_apps, role, users_by_id
             )
             skipped_count += skipped
             if not consented_applicants:

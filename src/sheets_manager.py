@@ -83,6 +83,10 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
         # User operation queues for batching
         self.user_upsert_queue: deque[UserRow] = deque()
 
+        # Memoized id->role map, rebuilt when get_all_roles() returns a new list object.
+        self._roles_by_id_src: Optional[List[ElectionStructureRow]] = None
+        self._roles_by_id: Dict[str, ElectionStructureRow] = {}
+
         self._connect()
 
     def _connect(self) -> None:
@@ -298,9 +302,12 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
         )
 
     def get_role_by_id(self, role_id: str) -> Optional[ElectionStructureRow]:
-        """Get a role by ID using cached roles."""
+        """Get a role by ID using cached roles (O(1) after first call per refresh)."""
         all_roles = self.get_all_roles()
-        return next((role for role in all_roles if role.get("ID") == role_id), None)
+        if self._roles_by_id_src is not all_roles:
+            self._roles_by_id = {r.get("ID", ""): r for r in all_roles}
+            self._roles_by_id_src = all_roles
+        return self._roles_by_id.get(role_id)
 
     @cached(cache=_applications_cache)  # type: ignore[untyped-decorator]
     def get_all_applications_from_sheets(self) -> List[ApplicationRow]:
@@ -332,28 +339,35 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                 cast(ApplicationRow, dict(app)) for app in sheet_applications
             ] + queue_applications
 
-            # Apply status updates to all applications
-            status_updates = self.status_update_queue.copy()
+            if not self.status_update_queue:
+                return all_applications
 
-            for status_update in status_updates:
-                for app in all_applications:
-                    if (
-                        app.get("Role_ID") == status_update.get("Role_ID")
-                        and str(app.get("Telegram_ID"))
-                        == str(status_update.get("Telegram_ID"))
-                        and app.get("Status") not in ("DENIED", "REMOVED")
-                    ):
-                        if status_update.get("Status") is not None:
-                            app["Status"] = cast(
-                                ApplicationStatus, status_update.get("Status")
-                            )
-                        if status_update.get("Fiirumi_Post") is not None:
-                            app["Fiirumi_Post"] = cast(
-                                str, status_update.get("Fiirumi_Post")
-                            )
-                        if status_update.get("Group_ID") is not None:
-                            app["Group_ID"] = cast(str, status_update.get("Group_ID"))
-                        break
+            # Index active apps by (Role_ID, Telegram_ID) so each queued update is O(1).
+            index: Dict[Tuple[str, str], ApplicationRow] = {}
+            for app in all_applications:
+                if app.get("Status") in ("DENIED", "REMOVED"):
+                    continue
+                key = (str(app.get("Role_ID")), str(app.get("Telegram_ID")))
+                index.setdefault(key, app)
+
+            for status_update in list(self.status_update_queue):
+                key = (
+                    str(status_update.get("Role_ID")),
+                    str(status_update.get("Telegram_ID")),
+                )
+                app = index.get(key)
+                if app is None:
+                    continue
+                if status_update.get("Status") is not None:
+                    app["Status"] = cast(
+                        ApplicationStatus, status_update.get("Status")
+                    )
+                if status_update.get("Fiirumi_Post") is not None:
+                    app["Fiirumi_Post"] = cast(str, status_update.get("Fiirumi_Post"))
+                if status_update.get("Group_ID") is not None:
+                    app["Group_ID"] = cast(str, status_update.get("Group_ID"))
+                if app.get("Status") in ("DENIED", "REMOVED"):
+                    index.pop(key, None)
 
             return all_applications
         except Exception as e:
@@ -444,12 +458,15 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
             return False
 
     def update_application_status(
-        self, role_id: str, telegram_id: int, **kwargs: Any
+        self,
+        role_id: str,
+        telegram_id: int,
+        *,
+        status: Optional[ApplicationStatus] = None,
+        fiirumi_post: Optional[str] = None,
+        group_id: Optional[str] = None,
     ) -> bool:
-        """Queue an application status update. kwargs: status, fiirumi_post, group_id."""
-        status = kwargs.get("status")
-        fiirumi_post = kwargs.get("fiirumi_post")
-        group_id = kwargs.get("group_id")
+        """Queue an application status update (any of status/fiirumi_post/group_id)."""
         try:
             for queued_update in self.status_update_queue:
                 if (
@@ -489,59 +506,6 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
             logger.error("Error queueing status update: %s", e)
             return False
 
-    def _row_updates_for_status_update(
-        self,
-        update_data: Dict[str, Any],
-        all_data: List[List[Any]],
-        headers: List[Any],
-    ) -> Tuple[List[Dict[str, Any]], bool]:
-        """Return (list of range/values updates for one row, found)."""
-        cols = {
-            k: headers.index(k) + 1
-            for k in ("Role_ID", "Telegram_ID", "Status", "Fiirumi_Post", "Group_ID")
-        }
-        role_id = update_data.get("Role_ID")
-        telegram_id = update_data.get("Telegram_ID")
-        status = update_data.get("Status")
-        fiirumi_post = update_data.get("Fiirumi_Post")
-        group_id = update_data.get("Group_ID")
-        for i, row in enumerate(all_data[1:], start=2):
-            if (
-                len(row) > max(cols["Role_ID"], cols["Telegram_ID"]) - 1
-                and row[cols["Role_ID"] - 1] == role_id
-                and str(row[cols["Telegram_ID"] - 1]) == str(telegram_id)
-                and row[cols["Status"] - 1] not in ("DENIED", "REMOVED")
-            ):
-                out = []
-                if status is not None:
-                    out.append(
-                        {
-                            "range": f"{chr(64 + cols['Status'])}{i}",
-                            "values": [[status]],
-                        }
-                    )
-                if fiirumi_post is not None:
-                    out.append(
-                        {
-                            "range": f"{chr(64 + cols['Fiirumi_Post'])}{i}",
-                            "values": [[fiirumi_post]],
-                        }
-                    )
-                if group_id and group_id != "":
-                    out.append(
-                        {
-                            "range": f"{chr(64 + cols['Group_ID'])}{i}",
-                            "values": [[group_id]],
-                        }
-                    )
-                return out, True
-        logger.warning(
-            "Application not found for queued status update: role %s, user %s",
-            role_id,
-            telegram_id,
-        )
-        return [], False
-
     def _compute_status_update_batch(
         self,
         all_data: List[List[Any]],
@@ -549,15 +513,61 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
         updates_to_process: List[Dict[str, Any]],
     ) -> Tuple[List[Dict[str, Any]], int]:
         """Compute batch updates and processed count for status update queue flush."""
-        batch_updates = []
+        cols = {
+            k: headers.index(k) + 1
+            for k in ("Role_ID", "Telegram_ID", "Status", "Fiirumi_Post", "Group_ID")
+        }
+        role_col = cols["Role_ID"] - 1
+        tid_col = cols["Telegram_ID"] - 1
+        status_col = cols["Status"] - 1
+        max_idx = max(role_col, tid_col, status_col)
+        # Index active rows by (Role_ID, Telegram_ID) once per flush.
+        row_index: Dict[Tuple[str, str], int] = {}
+        for i, row in enumerate(all_data[1:], start=2):
+            if len(row) <= max_idx:
+                continue
+            if row[status_col] in ("DENIED", "REMOVED"):
+                continue
+            row_index.setdefault((str(row[role_col]), str(row[tid_col])), i)
+
+        batch_updates: List[Dict[str, Any]] = []
         processed_count = 0
         for update_data in updates_to_process:
-            row_updates, found = self._row_updates_for_status_update(
-                update_data, all_data, headers
-            )
-            batch_updates.extend(row_updates)
-            if found:
-                processed_count += 1
+            role_id = update_data.get("Role_ID")
+            telegram_id = update_data.get("Telegram_ID")
+            row_idx = row_index.get((str(role_id), str(telegram_id)))
+            if row_idx is None:
+                logger.warning(
+                    "Application not found for queued status update: role %s, user %s",
+                    role_id,
+                    telegram_id,
+                )
+                continue
+            status = update_data.get("Status")
+            fiirumi_post = update_data.get("Fiirumi_Post")
+            group_id = update_data.get("Group_ID")
+            if status is not None:
+                batch_updates.append(
+                    {
+                        "range": f"{chr(64 + cols['Status'])}{row_idx}",
+                        "values": [[status]],
+                    }
+                )
+            if fiirumi_post is not None:
+                batch_updates.append(
+                    {
+                        "range": f"{chr(64 + cols['Fiirumi_Post'])}{row_idx}",
+                        "values": [[fiirumi_post]],
+                    }
+                )
+            if group_id:
+                batch_updates.append(
+                    {
+                        "range": f"{chr(64 + cols['Group_ID'])}{row_idx}",
+                        "values": [[group_id]],
+                    }
+                )
+            processed_count += 1
         return batch_updates, processed_count
 
     def flush_status_update_queue(self) -> bool:
@@ -845,18 +855,17 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
         users_to_process: List[UserRow],
     ) -> Tuple[List[Dict[str, Any]], List[List[Any]]]:
         """Compute batch updates and new user rows for user queue flush."""
-        telegram_id_col = headers.index("Telegram_ID") + 1
-        batch_updates = []
-        new_users = []
+        tid_col_idx = headers.index("Telegram_ID")
+        # Index rows by Telegram_ID once to avoid O(U*N) rescans.
+        tid_index: Dict[str, int] = {}
+        for i, row in enumerate(all_data[1:], start=2):
+            if len(row) > tid_col_idx:
+                tid_index.setdefault(str(row[tid_col_idx]), i)
+
+        batch_updates: List[Dict[str, Any]] = []
+        new_users: List[List[Any]] = []
         for user in users_to_process:
-            telegram_id = user.get("Telegram_ID")
-            user_row_index = None
-            for i, row in enumerate(all_data[1:], start=2):
-                if len(row) > telegram_id_col - 1 and str(
-                    row[telegram_id_col - 1]
-                ) == str(telegram_id):
-                    user_row_index = i
-                    break
+            user_row_index = tid_index.get(str(user.get("Telegram_ID")))
             user_data = [
                 user.get("Telegram_ID"),
                 user.get("Name"),

@@ -16,23 +16,6 @@ from .utils import get_notification_text, get_role_name, is_pending_status
 logger = logging.getLogger("vaalilakanabot")
 
 
-def _other_elected_roles(
-    data_manager: DataManager, user_id: int, current_role_id: str
-) -> List[str]:
-    """Return list of other elected role names the user has applied for."""
-    existing = data_manager.get_applications_for_user(user_id)
-    out = []
-    for app in existing:
-        other = data_manager.get_role_by_id(app.get("Role_ID", ""))
-        if (
-            other
-            and other.get("Type") in ("BOARD", "ELECTED")
-            and other.get("ID") != current_role_id
-        ):
-            out.append(other.get("Role_EN") or "")
-    return out
-
-
 def _approval_message_text(
     role: Optional[ElectionStructureRow],
     division: str,
@@ -75,11 +58,11 @@ async def send_admin_approval_request(
     """Send an approval request to admin chat."""
     role = data_manager.get_role_by_id(applicant.get("Role_ID", ""))
     division = role.get("Division_FI", "") if role else ""
-    elected_roles = _other_elected_roles(
-        data_manager,
+    other_role_rows = data_manager.get_other_elected_roles_for_user(
         applicant.get("Telegram_ID"),
         role.get("ID", "") if role else "",
     )
+    elected_roles = [r.get("Role_EN") or "" for r in other_role_rows]
     display_user = data_manager.get_applicant_display(applicant)
     users_by_id = {applicant.get("Telegram_ID"): display_user} if display_user else {}
     display_names = data_manager.get_applicant_display_names_for_announcement(

@@ -2,7 +2,7 @@
 
 import re
 from datetime import datetime
-from typing import Union
+from typing import Any, Mapping, Union
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler, ContextTypes
@@ -17,6 +17,11 @@ def is_valid_email(email: str) -> bool:
     """Basic email format validation."""
     pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     return bool(re.match(pattern, email))
+
+
+def _is_fi(chat_data: Mapping[str, Any]) -> bool:
+    """Return True when the registration flow is in Finnish (default)."""
+    return bool(chat_data.get("register_fi", True))
 
 
 async def _register_start(
@@ -71,21 +76,15 @@ async def register_name(
         return ConversationHandler.END
     text_content = message.text
     name = (text_content or "").strip()
+    is_fi = _is_fi(chat_data)
     if "," in name:
-        await message.reply_text(
-            get_translation("name_no_commas", bool(chat_data.get("register_fi", True)))
-        )
+        await message.reply_text(get_translation("name_no_commas", is_fi))
         return REGISTER_NAME
     if not name:
-        await message.reply_text(
-            get_translation("name_not_empty", bool(chat_data.get("register_fi", True)))
-        )
+        await message.reply_text(get_translation("name_not_empty", is_fi))
         return REGISTER_NAME
     chat_data["register_name"] = name
-    text = get_translation(
-        "register_ask_email", bool(chat_data.get("register_fi", True))
-    )
-    await message.reply_text(text)
+    await message.reply_text(get_translation("register_ask_email", is_fi))
     return REGISTER_EMAIL
 
 
@@ -99,13 +98,11 @@ async def register_email(
         return ConversationHandler.END
     text_content = message.text
     email = (text_content or "").strip()
+    is_fi = _is_fi(chat_data)
     if not is_valid_email(email):
-        await message.reply_text(
-            get_translation("email_invalid", bool(chat_data.get("register_fi", True)))
-        )
+        await message.reply_text(get_translation("email_invalid", is_fi))
         return REGISTER_EMAIL
     chat_data["register_email"] = email
-    is_fi = bool(chat_data.get("register_fi", True))
     text = get_translation("register_consent", is_fi)
     keyboard = InlineKeyboardMarkup(
         [
@@ -154,8 +151,7 @@ async def register_consent(
     data_manager.upsert_user(user)
     chat_data.pop("register_name", None)
     chat_data.pop("register_email", None)
-    is_finnish = bool(chat_data.get("register_fi", True))
-    await query.edit_message_text(get_translation("register_done", is_finnish))
+    await query.edit_message_text(get_translation("register_done", _is_fi(chat_data)))
     return ConversationHandler.END
 
 
@@ -167,10 +163,10 @@ async def register_cancel(
     chat_data = context.chat_data
     if chat_data is None:
         return ConversationHandler.END
-    is_finnish = bool(chat_data.get("register_fi", True))
+    is_fi = _is_fi(chat_data)
     chat_data.pop("register_name", None)
     chat_data.pop("register_email", None)
     chat_data.pop("register_fi", None)
     if message is not None:
-        await message.reply_text(get_translation("register_cancelled", is_finnish))
+        await message.reply_text(get_translation("register_cancelled", is_fi))
     return ConversationHandler.END
