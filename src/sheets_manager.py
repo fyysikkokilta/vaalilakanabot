@@ -355,18 +355,20 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                     str(status_update.get("Role_ID")),
                     str(status_update.get("Telegram_ID")),
                 )
-                app = index.get(key)
-                if app is None:
+                target = index.get(key)
+                if target is None:
                     continue
                 if status_update.get("Status") is not None:
-                    app["Status"] = cast(
+                    target["Status"] = cast(
                         ApplicationStatus, status_update.get("Status")
                     )
                 if status_update.get("Fiirumi_Post") is not None:
-                    app["Fiirumi_Post"] = cast(str, status_update.get("Fiirumi_Post"))
+                    target["Fiirumi_Post"] = cast(
+                        str, status_update.get("Fiirumi_Post")
+                    )
                 if status_update.get("Group_ID") is not None:
-                    app["Group_ID"] = cast(str, status_update.get("Group_ID"))
-                if app.get("Status") in ("DENIED", "REMOVED"):
+                    target["Group_ID"] = cast(str, status_update.get("Group_ID"))
+                if target.get("Status") in ("DENIED", "REMOVED"):
                     index.pop(key, None)
 
             return all_applications
