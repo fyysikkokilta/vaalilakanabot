@@ -141,35 +141,33 @@ def _topic_id_to_post_url(topic_id: int) -> Optional[str]:
         return None
 
 
-def _find_by_category_list(title: str, parent_slug: str) -> Optional[str]:
-    """Scan the parent category's topic list for a topic with the given title."""
+def _find_by_search(title: str, parent_slug: str) -> Optional[str]:
+    """Search the parent category for a topic with exactly the given title."""
     if not parent_slug:
         return None
-    list_url = f"{BASE_URL}/c/{parent_slug}/l/latest.json"
-    logger.info("Scanning category topic list: %s", list_url)
+    query = f'"{title}" #{parent_slug} in:title'
+    logger.info("Searching for election sheet topic: %s", query)
     try:
-        r = requests.get(list_url, headers=get_discourse_headers(), timeout=30)
-        r.raise_for_status()
-        topics = r.json().get("topic_list", {}).get("topics", [])
-        logger.info(
-            "Category '%s' has %d topic(s): %s",
-            parent_slug,
-            len(topics),
-            [t.get("title") for t in topics],
+        r = requests.get(
+            f"{BASE_URL}/search.json",
+            headers=get_discourse_headers(),
+            params={"q": query},
+            timeout=30,
         )
-        for topic in topics:
-            if topic.get("title") == title:
-                topic_id = topic.get("id")
-                if topic_id:
-                    return _topic_id_to_post_url(int(topic_id))
+        r.raise_for_status()
+        # Search is fuzzy, so require an exact title match
+        for topic in r.json().get("topics", []):
+            if topic.get("title") == title and topic.get("id"):
+                return _topic_id_to_post_url(int(topic["id"]))
+        logger.info("Topic '%s' not found in category '%s'", title, parent_slug)
     except Exception as e:
-        logger.warning("Category list scan failed for '%s': %s", parent_slug, e)
+        logger.warning("Topic search failed for '%s': %s", title, e)
     return None
 
 
 def _find_election_sheet_post_url(year: int, parent_slug: str) -> Optional[str]:
-    """Find the election sheet topic for the given year via the parent category topic list."""
-    return _find_by_category_list(f"Vaalilakana {year}", parent_slug)
+    """Find the election sheet topic for the given year via Discourse search."""
+    return _find_by_search(f"Vaalilakana {year}", parent_slug)
 
 
 def _create_election_sheet_topic(
