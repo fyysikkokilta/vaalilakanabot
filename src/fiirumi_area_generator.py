@@ -141,7 +141,7 @@ def _topic_id_to_post_url(topic_id: int) -> Optional[str]:
         return None
 
 
-def _find_by_search(title: str, parent_slug: str) -> Optional[str]:
+def _find_by_search(title: str, parent_slug: str, category_id: int) -> Optional[str]:
     """Search the parent category for a topic with exactly the given title."""
     if not parent_slug:
         return None
@@ -155,9 +155,14 @@ def _find_by_search(title: str, parent_slug: str) -> Optional[str]:
             timeout=30,
         )
         r.raise_for_status()
-        # Search is fuzzy, so require an exact title match
+        # Search is fuzzy and #slug also covers subcategories, where any user can
+        # post; require an exact title in the parent category itself
         for topic in r.json().get("topics", []):
-            if topic.get("title") == title and topic.get("id"):
+            if (
+                topic.get("title") == title
+                and topic.get("category_id") == category_id
+                and topic.get("id")
+            ):
                 return _topic_id_to_post_url(int(topic["id"]))
         logger.info("Topic '%s' not found in category '%s'", title, parent_slug)
     except Exception as e:
@@ -165,9 +170,11 @@ def _find_by_search(title: str, parent_slug: str) -> Optional[str]:
     return None
 
 
-def _find_election_sheet_post_url(year: int, parent_slug: str) -> Optional[str]:
+def _find_election_sheet_post_url(
+    year: int, parent_slug: str, category_id: int
+) -> Optional[str]:
     """Find the election sheet topic for the given year via Discourse search."""
-    return _find_by_search(f"Vaalilakana {year}", parent_slug)
+    return _find_by_search(f"Vaalilakana {year}", parent_slug, category_id)
 
 
 def _create_election_sheet_topic(
@@ -215,7 +222,7 @@ def _create_election_sheet_topic(
             logger.info(
                 "Election sheet topic '%s' already exists (422); body: %s", title, body
             )
-            return _find_election_sheet_post_url(year, parent_slug)
+            return _find_election_sheet_post_url(year, parent_slug, category_id)
         logger.error(
             "Failed to create election sheet topic: %s — %s", e, e.response.text[:500]
         )
@@ -315,7 +322,7 @@ def generate_election_areas(year: int) -> bool:
         logger.info("Successfully generated all election areas for year %d", year)
 
     # Find or create the election sheet topic in the parent category
-    post_url = _find_election_sheet_post_url(year, parent_slug)
+    post_url = _find_election_sheet_post_url(year, parent_slug, parent_id)
     if not post_url:
         post_url = _create_election_sheet_topic(year, parent_id, parent_slug)
     if post_url:
