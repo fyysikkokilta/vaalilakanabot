@@ -76,7 +76,7 @@ def create_category(
             logger.info("Created category '%s' with ID %s", name, category.get("id"))
         return cast(Optional[Dict[str, Any]], result.get("category"))
     except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 422:
+        if e.response is not None and e.response.status_code == 422:
             # Category already exists; return a stub so callers treat this as success
             logger.info("Category '%s' already exists (422)", name)
             return {"name": name, "slug": slug or name}
@@ -217,14 +217,14 @@ def _create_election_sheet_topic(
             return f"{BASE_URL}/posts/{post_id}.json"
         return None
     except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 422:
-            body = e.response.text[:500]
+        body = e.response.text[:500] if e.response is not None else ""
+        if e.response is not None and e.response.status_code == 422:
             logger.info(
                 "Election sheet topic '%s' already exists (422); body: %s", title, body
             )
             return _find_election_sheet_post_url(year, parent_slug, category_id)
         logger.error(
-            "Failed to create election sheet topic: %s — %s", e, e.response.text[:500]
+            "Failed to create election sheet topic: %s — %s", e, body
         )
         return None
     except Exception as e:

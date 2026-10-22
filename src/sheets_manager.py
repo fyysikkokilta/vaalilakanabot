@@ -242,7 +242,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
                     )
         return updates
 
-    @cached(cache=_roles_cache)  # type: ignore[untyped-decorator]
+    @cached(cache=_roles_cache)
     def get_all_roles(self) -> List[ElectionStructureRow]:
         """Get all roles with caching and ensure IDs exist when cache refreshes."""
         if self.election_sheet is None:
@@ -309,7 +309,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
             self._roles_by_id_src = all_roles
         return self._roles_by_id.get(role_id)
 
-    @cached(cache=_applications_cache)  # type: ignore[untyped-decorator]
+    @cached(cache=_applications_cache)
     def get_all_applications_from_sheets(self) -> List[ApplicationRow]:
         """Get all applications with caching (1 minute TTL)."""
         if self.applications_sheet is None:
@@ -666,7 +666,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
             return False
 
     # Channel management methods
-    @cached(cache=_channels_cache)  # type: ignore[untyped-decorator]
+    @cached(cache=_channels_cache)
     def get_all_channels(self) -> List[ChannelRow]:
         """Get all registered channels."""
         if self.channels_sheet is None:
@@ -748,7 +748,7 @@ class SheetsManager:  # pylint: disable=too-many-public-methods,too-many-instanc
             return False
 
     # User management methods
-    @cached(cache=_users_cache)  # type: ignore[untyped-decorator]
+    @cached(cache=_users_cache)
     def get_all_users_from_sheets(self) -> List[UserRow]:
         """Get all users from the sheet with caching (TTL). Used by get_all_users()."""
         if self.users_sheet is None:

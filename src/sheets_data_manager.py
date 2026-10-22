@@ -48,7 +48,7 @@ class DataManager:
 
     def get_all_roles(self) -> List[ElectionStructureRow]:
         """Get all roles from Google Sheets with caching."""
-        return self.sheets_manager.get_all_roles()  # type: ignore[no-any-return]
+        return self.sheets_manager.get_all_roles()
 
     def find_role_by_name(self, role_name: str) -> Optional[ElectionStructureRow]:
         """Find a role by name using SheetsManager's cached lookup."""
@@ -499,7 +499,7 @@ class DataManager:
     @property
     def channels(self) -> List[ChannelRow]:
         """Get all registered channels."""
-        return self.sheets_manager.get_all_channels()  # type: ignore[no-any-return]
+        return self.sheets_manager.get_all_channels()
 
     def _applicants_for_role_enriched(
         self,
