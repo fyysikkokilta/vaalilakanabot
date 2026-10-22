@@ -1,6 +1,7 @@
 """User commands and basic functionality."""
 
 import logging
+from html import escape
 from typing import Dict, List, Union
 
 from telegram import Update
@@ -159,15 +160,15 @@ def _format_one_application(
     division_fi = role_data.get("Division_FI", "")
     division_en = role_data.get("Division_EN", "")
     status = map_application_status(app.get("Status", "PENDING"), is_finnish)
-    block = f"• <b>{role_fi if is_finnish else (role_en or role_fi)}</b>\n"
+    block = f"• <b>{escape(str(role_fi if is_finnish else (role_en or role_fi)))}</b>\n"
     if division_fi:
         div_label = get_translation("division_label", is_finnish)
         div_name = division_fi if is_finnish else (division_en or division_fi)
-        block += f"  <b>{div_label}:</b> {div_name}\n"
+        block += f"  <b>{div_label}:</b> {escape(str(div_name))}\n"
     block += f"  <b>{get_translation('status_label', is_finnish)}:</b> {status}\n"
     fiirumi = app.get("Fiirumi_Post", "")
     if fiirumi:
-        block += f'  <b>{get_translation("fiirumi_label", is_finnish)}:</b> <a href="{fiirumi}">link</a>\n'
+        block += f'  <b>{get_translation("fiirumi_label", is_finnish)}:</b> <a href="{escape(fiirumi)}">link</a>\n'
     return block + "\n"
 
 
@@ -182,9 +183,9 @@ def _render_applications(
     }
     text = ""
     if user is not None:
-        name = user.get("Name", "")
-        email = user.get("Email", "")
-        telegram = user.get("Telegram", "") or "—"
+        name = escape(user.get("Name", ""))
+        email = escape(user.get("Email", ""))
+        telegram = escape(user.get("Telegram", "") or "—")
         text += get_translation(
             "your_info",
             is_finnish,

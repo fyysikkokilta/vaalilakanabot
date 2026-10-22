@@ -1,6 +1,7 @@
 """Admin approval functionality for applications."""
 
 import logging
+from html import escape
 from typing import Dict, List, Literal, Optional, Tuple
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -33,11 +34,11 @@ def _approval_message_text(
         telegram_handle = f"@{telegram_handle_raw}"
     text = (
         f"🗳️ <b>New application for elected position</b>\n\n"
-        f"<b>Position:</b> {role_en}\n"
-        f"<b>Division:</b> {division}\n"
-        f"<b>Name:</b> {display.get('Name', '')}\n"
-        f"<b>Email:</b> {display.get('Email', '')}\n"
-        f"<b>Telegram:</b> {telegram_handle}\n\n"
+        f"<b>Position:</b> {escape(role_en)}\n"
+        f"<b>Division:</b> {escape(division)}\n"
+        f"<b>Name:</b> {escape(display.get('Name', ''))}\n"
+        f"<b>Email:</b> {escape(display.get('Email', ''))}\n"
+        f"<b>Telegram:</b> {escape(telegram_handle)}\n\n"
     )
     if elected_roles:
         text += (
@@ -45,7 +46,7 @@ def _approval_message_text(
             "<b>Other applications:</b>\n"
         )
         for r in elected_roles:
-            text += f"• {r}\n"
+            text += f"• {escape(r)}\n"
     text += "Approve application?"
     return text
 
@@ -186,6 +187,9 @@ async def handle_admin_approval(
     display_names = data_manager.get_applicant_display_names_for_announcement(
         role_id, application
     )
+    display_names = escape(display_names)
+    role_fi = escape(str(role_row.get("Role_FI") or ""))
+    role_en = escape(str(role_row.get("Role_EN") or ""))
     application_ref = f"{role_id}_{telegram_id}"
     is_finnish = (application.get("Language") or "").strip().lower() == "fi"
 
@@ -194,7 +198,7 @@ async def handle_admin_approval(
         if approved_app:
             await query.edit_message_text(
                 f"✅ <b>Application approved!</b>\n\n"
-                f"<b>Position:</b> {role_row.get('Role_EN')}\n"
+                f"<b>Position:</b> {role_en}\n"
                 f"<b>Applicant(s):</b> {display_names}\n\n"
                 f"Application has been added to the election sheet and notification sent to channels.",
                 parse_mode="HTML",
@@ -205,7 +209,7 @@ async def handle_admin_approval(
             await announce_to_channels(
                 f"<b>Uusi nimi vaalilakanassa!</b>\n"
                 f"<b>New candidate on the election sheet!</b>\n"
-                f"<b>{role_row.get('Role_FI')} / {role_row.get('Role_EN')}:</b>\n"
+                f"<b>{role_fi} / {role_en}:</b>\n"
                 f"<i>{display_names}</i>",
                 context,
                 data_manager,
@@ -218,7 +222,7 @@ async def handle_admin_approval(
         if result:
             await query.edit_message_text(
                 f"❌ <b>Application rejected!</b>\n\n"
-                f"<b>Position:</b> {role_row.get('Role_EN')}\n"
+                f"<b>Position:</b> {role_en}\n"
                 f"<b>Applicant(s):</b> {display_names}\n\n"
                 f"Application has been marked as DENIED.",
                 parse_mode="HTML",

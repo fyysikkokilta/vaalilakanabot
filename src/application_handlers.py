@@ -1,6 +1,7 @@
 """Application conversation handlers."""
 
 import logging
+from html import escape
 from datetime import datetime
 from typing import Any, Dict, Tuple, Union
 
@@ -149,10 +150,10 @@ def _build_confirm_application_ui(
     text = get_translation(
         "application_details",
         is_fi,
-        position=get_role_name(role_row, is_fi),
-        name=chat_data.get("name", ""),
-        email=chat_data.get("email", ""),
-        telegram=chat_data.get("telegram", ""),
+        position=escape(get_role_name(role_row, is_fi)),
+        name=escape(chat_data.get("name", "")),
+        email=escape(chat_data.get("email", "")),
+        telegram=escape(chat_data.get("telegram", "")),
         elected_text=elected_text,
     )
     keyboard = InlineKeyboardMarkup(
@@ -179,7 +180,9 @@ async def _send_multiple_elected_warning(
     warning_text = get_translation(
         "multiple_application_warning",
         is_fi,
-        elected_positions=", ".join(get_role_name(role, is_fi) for role in other_roles),
+        elected_positions=", ".join(
+            escape(get_role_name(role, is_fi)) for role in other_roles
+        ),
     )
     keyboard = InlineKeyboardMarkup(
         [

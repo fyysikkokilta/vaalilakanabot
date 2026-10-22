@@ -1,6 +1,7 @@
 """Admin commands and operations."""
 
 import logging
+from html import escape
 import re
 from io import BytesIO, StringIO
 from typing import Dict, List, Optional, Tuple
@@ -197,7 +198,8 @@ async def add_fiirumi_to_applicant(update: Update, data_manager: DataManager) ->
             found_position, name
         )
         await message.reply_html(
-            f'Added Fiirumi:\n{found_position.get("Role_EN")}: <a href="{fiirumi}">{display_names}</a>',
+            f"Added Fiirumi:\n{escape(str(found_position.get('Role_EN') or ''))}: "
+            f'<a href="{escape(fiirumi)}">{escape(display_names)}</a>',
         )
     except Exception as e:
         logger.error(e)

@@ -1,6 +1,7 @@
 """Utility functions for the Vaalilakanabot."""
 
 import logging
+from html import escape
 import time
 from functools import wraps
 from typing import Any, Callable, List, Literal, Optional, TypeVar
@@ -197,10 +198,10 @@ def vaalilakana_to_string(vaalilakana: List[RoleData], is_finnish: bool) -> str:
         for role_data in roles:
             # Localized title
             title = role_data.get("Role_FI") if is_finnish else role_data.get("Role_EN")
-            text += f"<b>{title}:</b>\n"
+            text += f"<b>{escape(str(title or ''))}:</b>\n"
             for applicant in role_data.get("Applicants", []):
-                name = applicant.get("Name", "")
-                link = applicant.get("Fiirumi_Post", "")
+                name = escape(applicant.get("Name", ""))
+                link = escape(applicant.get("Fiirumi_Post", ""))
                 elected = applicant.get("Status") == "ELECTED"
                 if elected:
                     if link:
@@ -260,6 +261,7 @@ def get_notification_text(
     is_finnish: bool,
 ) -> str:
     """Get standardized notification text for different scenarios."""
+    position = escape(position)
     notifications = {
         "approved": (
             f"✅ <b>Hakemuksesi on hyväksytty!</b>\n\n"

@@ -1,6 +1,7 @@
 """Announcement and notification functionality."""
 
 import asyncio
+from html import escape
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Tuple
@@ -154,7 +155,7 @@ async def parse_fiirumi_posts(
         created_at = topic.get("created_at")
         if not (created_at and is_recent_timestamp(created_at, current_time)):
             continue
-        title = topic["title"]
+        title = escape(topic["title"])
         logger.info("Found new post: %s (ID: %s)", title, topic["id"])
         if not index_built:
             applicant_index = _build_applicant_index(data_manager)
@@ -176,7 +177,7 @@ async def parse_fiirumi_posts(
         created_at = question.get("created_at")
         if not (created_at and is_recent_timestamp(created_at, current_time)):
             continue
-        title = question["title"]
+        title = escape(question["title"])
         t_id = question["id"]
         logger.info("Found new question: %s (ID: %s)", title, t_id)
         await announce_to_channels(
@@ -216,10 +217,12 @@ async def announce_new_responses(
 
                 new_responses.append(
                     {
-                        "title": title,
+                        "title": escape(title),
                         "t_id": t_id,
                         "posts_count": posts_count,
-                        "last_poster": question.get("last_poster_username", "Unknown"),
+                        "last_poster": escape(
+                            question.get("last_poster_username", "Unknown")
+                        ),
                     }
                 )
                 logger.info(
