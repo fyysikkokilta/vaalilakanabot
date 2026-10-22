@@ -106,6 +106,7 @@ async def update_election_sheet(
     """Update the election sheet in the Guild website.
 
     Preserves any preamble text that appears before the sheet heading in the post.
+    Skips the update when the post content would not change.
     Does nothing if VAALILAKANA_POST_URL is not set.
     """
     post_url = get_vaalilakana_post_url()
@@ -133,14 +134,17 @@ async def update_election_sheet(
         return None
 
     preamble, has_heading = extract_preamble_and_content(current_content)
-    if has_heading and preamble:
-        logger.info("Found preamble, preserving it (%d chars)", len(preamble))
 
     # Build final content: preamble (if any) followed by the sheet
     if has_heading and preamble:
         final_text = f"{preamble}\n\n{sheet_content}"
     else:
         final_text = sheet_content
+
+    # Job runs every minute; skip the PUT (and its log line) when nothing changed
+    if final_text.strip() == current_content.strip():
+        logger.debug("Election sheet unchanged, skipping update")
+        return None
 
     payload = {
         "raw": final_text,
