@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple
 
 import requests
 from telegram import LinkPreviewOptions
+from telegram.error import BadRequest, Forbidden
 from telegram.ext import ContextTypes
 
 from .utils import check_title_matches_applicant_and_role, create_fiirumi_link
@@ -51,6 +52,13 @@ def is_recent_timestamp(
         return False
 
 
+def _is_chat_gone(error: Exception) -> bool:
+    """True if the bot was removed from the chat or the chat no longer exists."""
+    if isinstance(error, Forbidden):
+        return True
+    return isinstance(error, BadRequest) and "chat not found" in error.message.lower()
+
+
 async def announce_to_channels(
     message: str, context: ContextTypes.DEFAULT_TYPE, data_manager: DataManager
 ) -> None:
@@ -75,9 +83,14 @@ async def announce_to_channels(
         *(_send(c.get("Channel_ID")) for c in channels)
     )
     for channel_id, error in results:
-        if error is not None:
-            logger.error(error)
+        if error is None:
+            continue
+        if _is_chat_gone(error):
+            logger.warning("Unregistering unreachable channel %s: %s", channel_id, error)
             data_manager.remove_channel(channel_id)
+        else:
+            # Transient or message errors must not unregister every channel
+            logger.error("Failed to announce to channel %s: %s", channel_id, error)
 
 
 # (role_data, applicant, role_row) — built once per parse_fiirumi_posts run
