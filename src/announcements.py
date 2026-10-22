@@ -6,6 +6,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Tuple
 
 import requests
+from telegram import LinkPreviewOptions
 from telegram.ext import ContextTypes
 
 from .utils import check_title_matches_applicant_and_role, create_fiirumi_link
@@ -15,6 +16,10 @@ from .config import get_topic_list_url, get_question_list_url
 from .fiirumi_area_generator import get_discourse_headers
 
 logger = logging.getLogger("vaalilakanabot")
+
+# Telegram cannot drop only the image from a link preview; a small thumbnail
+# keeps the title/excerpt text while avoiding the large preview image.
+ANNOUNCEMENT_LINK_PREVIEW = LinkPreviewOptions(prefer_small_media=True)
 
 
 def get_current_minute_start() -> datetime:
@@ -55,7 +60,12 @@ async def announce_to_channels(
 
     async def _send(channel_id: int) -> Tuple[int, Any]:
         try:
-            await context.bot.send_message(channel_id, message, parse_mode="HTML")
+            await context.bot.send_message(
+                channel_id,
+                message,
+                parse_mode="HTML",
+                link_preview_options=ANNOUNCEMENT_LINK_PREVIEW,
+            )
             return channel_id, None
         except Exception as e:  # pylint: disable=broad-except
             return channel_id, e
